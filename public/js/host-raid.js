@@ -18,8 +18,18 @@ const bossHealth = document.querySelector('#boss-health');
 const teamQuestions = document.querySelector('#team-questions');
 const teamAccuracy = document.querySelector('#team-accuracy');
 const bossName = document.querySelector('#boss-name');
+const healthPerPlayerInput = document.querySelector('#boss-health-per-player');
+const minHealthInput = document.querySelector('#boss-min-health');
+const aggressionInput = document.querySelector('#boss-aggression');
+const aggressionLabel = document.querySelector('#boss-aggression-label');
+const attackPowerInput = document.querySelector('#boss-attack-power');
+const attackPowerLabel = document.querySelector('#boss-attack-power-label');
+const warningInput = document.querySelector('#boss-warning-ms');
+const saveTuningButton = document.querySelector('#save-boss-tuning');
+const tuningStatus = document.querySelector('#boss-tuning-status');
 
 let socket;
+let latestReport;
 
 if (suppliedKey && code) {
   sessionStorage.setItem(storageKey, suppliedKey);
@@ -27,6 +37,10 @@ if (suppliedKey && code) {
 }
 
 codeEl.textContent = code || '------';
+updateRangeLabels();
+aggressionInput?.addEventListener('input', updateRangeLabels);
+attackPowerInput?.addEventListener('input', updateRangeLabels);
+saveTuningButton?.addEventListener('click', saveBossTuning);
 
 if (!code || !hostKey) {
   connectionEl.textContent = 'Missing host key';
@@ -53,6 +67,45 @@ startButton.addEventListener('click', () => {
   socket.send(JSON.stringify({ type: 'start_raid' }));
 });
 
+function saveBossTuning() {
+  if (!socket || socket.readyState !== WebSocket.OPEN || latestReport?.status !== 'lobby') return;
+  saveTuningButton.disabled = true;
+  tuningStatus.textContent = 'Saving...';
+  socket.send(JSON.stringify({
+    type: 'update_boss_tuning',
+    tuning: {
+      healthPerPlayer: Number(healthPerPlayerInput.value),
+      minHealth: Number(minHealthInput.value),
+      aggression: Number(aggressionInput.value),
+      attackPower: Number(attackPowerInput.value),
+      warningMs: Number(warningInput.value)
+    }
+  }));
+}
+
+function updateRangeLabels() {
+  if (aggressionLabel && aggressionInput) aggressionLabel.textContent = `${aggressionInput.value} / 5`;
+  if (attackPowerLabel && attackPowerInput) attackPowerLabel.textContent = `${attackPowerInput.value} / 5`;
+}
+
+function renderTuning(tuning, editable) {
+  if (!tuning) return;
+  healthPerPlayerInput.value = String(tuning.healthPerPlayer ?? 100);
+  minHealthInput.value = String(tuning.minHealth ?? 300);
+  aggressionInput.value = String(tuning.aggression ?? 3);
+  attackPowerInput.value = String(tuning.attackPower ?? 3);
+  warningInput.value = String(tuning.warningMs ?? 1650);
+  updateRangeLabels();
+
+  for (const control of [healthPerPlayerInput, minHealthInput, aggressionInput, attackPowerInput, warningInput]) {
+    control.disabled = !editable;
+  }
+  saveTuningButton.disabled = !editable;
+  tuningStatus.textContent = editable
+    ? 'Change the encounter and save before starting.'
+    : 'Boss tuning is locked once the raid starts.';
+}
+
 function connect() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws/${encodeURIComponent(code)}?role=host&key=${encodeURIComponent(hostKey)}`;
@@ -65,6 +118,7 @@ function connect() {
   socket.addEventListener('close', () => {
     connectionEl.textContent = 'Disconnected';
     startButton.disabled = true;
+    saveTuningButton.disabled = true;
   });
 
   socket.addEventListener('error', () => {
@@ -74,8 +128,13 @@ function connect() {
   socket.addEventListener('message', (event) => {
     const payload = JSON.parse(event.data);
     if (payload.type === 'host_state') render(payload.report);
+    if (payload.type === 'boss_tuning_saved') {
+      renderTuning(payload.tuning, true);
+      tuningStatus.textContent = 'Boss tuning saved.';
+    }
     if (payload.type === 'error') {
       messageEl.innerHTML = `<div class="notice error">${escapeHtml(payload.message)}</div>`;
+      if (latestReport?.status === 'lobby') saveTuningButton.disabled = false;
     }
     if (payload.type === 'raid_complete') {
       messageEl.innerHTML = `<div class="notice">Raid complete: <strong>${escapeHtml(payload.outcome)}</strong>.</div>`;
@@ -85,6 +144,7 @@ function connect() {
 
 function render(report) {
   if (!report) return;
+  latestReport = report;
   const players = report.players || [];
 
   bossName.textContent = report.boss?.name || 'Boss';
@@ -93,6 +153,9 @@ function render(report) {
   teamQuestions.textContent = String(report.team?.questions || 0);
   teamAccuracy.textContent = `${report.team?.accuracy || 0}%`;
   countEl.textContent = String(players.length);
+
+  const editable = report.status === 'lobby';
+  renderTuning(report.boss?.tuning, editable);
 
   startButton.disabled = report.status !== 'lobby' || players.length === 0;
   startButton.textContent = report.status === 'lobby' ? 'Start raid' : report.status === 'running' ? 'Raid in progress' : 'Raid complete';
