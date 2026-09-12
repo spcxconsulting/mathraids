@@ -60,6 +60,99 @@
   touch-action: none;
 }
 
+.victory-celebration {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .55s ease;
+}
+
+.victory-celebration.active { opacity: 1; }
+
+.victory-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255,230,120,.30), transparent 34%),
+    linear-gradient(to top, rgba(76,188,255,.12), transparent 45%);
+  animation: victoryGlow 2.4s ease-in-out infinite alternate;
+}
+
+.victory-copy {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  transform: translate(-50%, -12px) scale(.96);
+  width: min(92%, 680px);
+  text-align: center;
+  opacity: 0;
+}
+
+.victory-celebration.active .victory-copy {
+  animation: victoryCopyIn .8s .65s cubic-bezier(.2,.8,.2,1) forwards;
+}
+
+.victory-kicker {
+  font-size: clamp(.7rem, 1.5vw, .95rem);
+  font-weight: 800;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #bfeaff;
+}
+
+.victory-title {
+  margin-top: 2px;
+  font-size: clamp(2.3rem, 7vw, 5.6rem);
+  line-height: .95;
+  font-weight: 950;
+  letter-spacing: .04em;
+  color: #fff3a6;
+  text-shadow: 0 3px 0 rgba(111,69,0,.72), 0 0 28px rgba(255,215,80,.58);
+}
+
+.victory-subtitle {
+  margin-top: 8px;
+  font-size: clamp(.85rem, 2vw, 1.15rem);
+  font-weight: 700;
+  color: #eaf8ff;
+  text-shadow: 0 2px 8px rgba(0,0,0,.75);
+}
+
+.victory-confetti { position: absolute; inset: 0; }
+.victory-confetti span {
+  position: absolute;
+  top: -12%;
+  left: var(--x);
+  width: var(--w);
+  height: calc(var(--w) * 1.8);
+  border-radius: 2px;
+  background: hsl(var(--h) 90% 65%);
+  opacity: 0;
+  transform: rotate(var(--r));
+}
+
+.victory-celebration.active .victory-confetti span {
+  animation: confettiFall var(--d) var(--delay) cubic-bezier(.18,.72,.28,1) forwards;
+}
+
+@keyframes victoryGlow {
+  from { opacity: .55; transform: scale(1); }
+  to { opacity: .95; transform: scale(1.035); }
+}
+
+@keyframes victoryCopyIn {
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes confettiFall {
+  0% { opacity: 0; transform: translate3d(0,-20px,0) rotate(var(--r)); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--drift), 420px, 0) rotate(calc(var(--r) + 560deg)); }
+}
+
 .battlefield-status {
   position: absolute;
   width: 1px;
