@@ -1,4 +1,4 @@
-import { RaidRoom } from './raid-room-powered.js';
+import { RaidRoom } from './raid-room-synced.js';
 
 export { RaidRoom };
 
