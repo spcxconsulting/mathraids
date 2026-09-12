@@ -26,6 +26,10 @@ function safeClientId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 }
 
+function startingPosition(index) {
+  return 6 + ((index * 13) % 88);
+}
+
 export class RaidRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -141,7 +145,8 @@ export class RaidRoom extends DurableObject {
     let player = Object.values(this.room.players).find((entry) => entry.clientId === clientId);
 
     if (!player) {
-      if (Object.keys(this.room.players).length >= 60) {
+      const playerIndex = Object.keys(this.room.players).length;
+      if (playerIndex >= 60) {
         return json({ error: 'This raid is full' }, 409);
       }
 
@@ -150,7 +155,7 @@ export class RaidRoom extends DurableObject {
         clientId,
         name: safeName(url.searchParams.get('name')),
         class: url.searchParams.get('class') === 'healer' ? 'healer' : 'dps',
-        x: 50,
+        x: startingPosition(playerIndex),
         joinedAt: Date.now(),
         attempted: 0,
         correct: 0,
@@ -169,7 +174,7 @@ export class RaidRoom extends DurableObject {
       await this.saveRoom();
     } else {
       player.name = safeName(url.searchParams.get('name') || player.name);
-      player.class = url.searchParams.get('class') === 'healer' ? 'healer' : player.class;
+      player.class = url.searchParams.get('class') === 'healer' ? 'healer' : 'dps';
     }
 
     this.ctx.acceptWebSocket(server, ['students', `player:${player.id}`]);
