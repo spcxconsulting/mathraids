@@ -3,6 +3,12 @@
   "name": "mathraids",
   "main": "./src/index.js",
   "compatibility_date": "2026-09-13",
+  "routes": [
+    {
+      "pattern": "mathraids.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
