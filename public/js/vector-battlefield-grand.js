@@ -8,6 +8,7 @@ const JUMP_SPEED = 520;
 const GRAVITY = 1500;
 const POSITION_SEND_MS = 100;
 const REMOTE_LERP = 18;
+const REMOTE_JUMP_MS = 720;
 const LABEL_LIMIT = 14;
 const BOSS_X = WIDTH / 2;
 
@@ -36,6 +37,10 @@ function pctToX(value) {
 
 function xToPct(value) {
   return clamp((Number(value) / WIDTH) * 100, 4, 96);
+}
+
+function lerp(from, to, amount) {
+  return from + (to - from) * amount;
 }
 
 function loadImage(src) {
@@ -92,10 +97,12 @@ export function createRaidBattlefield({
     lastSentX: null,
     telegraph: null,
     complete: null,
+    completedAt: 0,
     bossHitUntil: 0,
     bossHitFromX: BOSS_X,
     bossAttackUntil: 0,
     bossAttackType: null,
+    bossAttackEffect: null,
     projectiles: [],
     specials: [],
     floaters: [],
@@ -177,7 +184,7 @@ export function createRaidBattlefield({
         grounded: true,
         facing: player.facing === 'left' ? 'left' : 'right',
         remoteJumpStart: 0,
-        remoteJumpDuration: 540,
+        remoteJumpDuration: REMOTE_JUMP_MS,
         dazedUntil: 0,
         powerReady: false
       };
@@ -187,6 +194,22 @@ export function createRaidBattlefield({
     entry.class = player.class === 'healer' ? 'healer' : 'dps';
     faceBoss(entry);
     return entry;
+  }
+
+  function applyRemoteAirborne(entry, airborneUntil) {
+    if (!entry || entry.id === state.localPlayerId) return;
+    const until = Number(airborneUntil) || 0;
+    const remaining = until - Date.now();
+
+    if (remaining <= 0) {
+      entry.remoteJumpStart = 0;
+      entry.y = GROUND_Y;
+      return;
+    }
+
+    entry.remoteJumpDuration = REMOTE_JUMP_MS;
+    const elapsed = clamp(REMOTE_JUMP_MS - remaining, 0, REMOTE_JUMP_MS);
+    entry.remoteJumpStart = performance.now() - elapsed;
   }
 
   function syncState(serverState) {
@@ -201,6 +224,7 @@ export function createRaidBattlefield({
       const entry = ensurePlayer(player);
       if (player.id !== state.localPlayerId) {
         entry.targetX = pctToX(player.x);
+        applyRemoteAirborne(entry, player.airborneUntil);
       } else if (state.lastSentX === null) {
         entry.x = pctToX(player.x);
         entry.targetX = entry.x;
@@ -225,18 +249,20 @@ export function createRaidBattlefield({
     if (local) local.powerReady = Boolean(ready);
   }
 
-  function movePlayer(id, xPct) {
+  function movePlayer(id, xPct, facing, airborneUntil) {
     const entry = state.players.get(id);
     if (!entry) return;
     if (id === state.localPlayerId) return;
     entry.targetX = pctToX(xPct);
+    applyRemoteAirborne(entry, airborneUntil);
     faceBoss(entry);
   }
 
-  function jumpPlayer(id) {
+  function jumpPlayer(id, airborneUntil) {
     if (id === state.localPlayerId) return;
     const entry = state.players.get(id);
-    if (entry) entry.remoteJumpStart = performance.now();
+    if (!entry) return;
+    applyRemoteAirborne(entry, airborneUntil || (Date.now() + REMOTE_JUMP_MS));
   }
 
   function jumpLocal() {
@@ -300,13 +326,21 @@ export function createRaidBattlefield({
   }
 
   function resolveBossAttack(payload) {
+    const now = performance.now();
     state.telegraph = null;
-    state.bossAttackUntil = performance.now() + 430;
+    state.bossAttackUntil = now + 650;
     state.bossAttackType = payload.attackType;
+    state.bossAttackEffect = {
+      type: payload.attackType,
+      start: now,
+      duration: 720,
+      damage: payload.damage || 0
+    };
+
     if ((payload.dodgedPlayerIds || []).includes(state.localPlayerId)) {
       const local = localPlayer();
       if (local) {
-        state.floaters.push({ x: local.x, y: local.y - 42, text: 'DODGE!', color: '#71ddff', start: performance.now(), duration: 550 });
+        state.floaters.push({ x: local.x, y: local.y - 42, text: 'DODGE!', color: '#71ddff', start: now, duration: 550 });
       }
     }
   }
@@ -317,9 +351,11 @@ export function createRaidBattlefield({
   }
 
   function complete(outcome) {
+    if (!state.complete) state.completedAt = performance.now();
     state.complete = outcome;
     state.input.left = false;
     state.input.right = false;
+    state.telegraph = null;
   }
 
   function updateLocal(player, dt, now) {
@@ -346,7 +382,7 @@ export function createRaidBattlefield({
     if (now - state.lastPositionSentAt >= POSITION_SEND_MS) {
       const pct = xToPct(player.x);
       const axis = state.input.left === state.input.right ? 0 : state.input.left ? -1 : 1;
-      if (state.lastSentX === null || Math.abs(pct - state.lastSentX) > 0.08 || axis !== 0) {
+      if (state.lastSentX === null || Math.abs(pct - state.lastSentX) > 0.08 || axis !== 0 || !player.grounded) {
         onPosition({ x: pct, facing: player.facing });
         state.lastSentX = pct;
       }
@@ -363,14 +399,14 @@ export function createRaidBattlefield({
         entry.remoteJumpStart = 0;
         entry.y = GROUND_Y;
       } else {
-        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 68;
+        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 72;
       }
     }
   }
 
   function registerBossHit(fromX, damage, color = '#ffd080') {
     const now = performance.now();
-    state.bossHitUntil = now + 165;
+    state.bossHitUntil = now + 230;
     state.bossHitFromX = fromX;
     state.floaters.push({ x: BOSS_X + 54, y: 80, text: `-${damage}`, color, start: now, duration: 520 });
   }
@@ -393,6 +429,10 @@ export function createRaidBattlefield({
       }
       return true;
     });
+
+    if (state.bossAttackEffect && now - state.bossAttackEffect.start > state.bossAttackEffect.duration) {
+      state.bossAttackEffect = null;
+    }
 
     state.floaters = state.floaters.filter((floater) => now - floater.start < floater.duration);
   }
@@ -444,7 +484,7 @@ export function createRaidBattlefield({
     }
 
     if (now < state.bossAttackUntil) {
-      const remaining = (state.bossAttackUntil - now) / 430;
+      const remaining = (state.bossAttackUntil - now) / 650;
       const force = Math.sin((1 - remaining) * Math.PI);
       if (state.bossAttackType === 'left_slam') {
         x -= force * 25;
@@ -460,12 +500,12 @@ export function createRaidBattlefield({
     }
 
     if (now < state.bossHitUntil) {
-      const remaining = (state.bossHitUntil - now) / 165;
+      const remaining = (state.bossHitUntil - now) / 230;
       const away = state.bossHitFromX < BOSS_X ? 1 : -1;
-      x += away * remaining * 12 + Math.sin(now / 14) * remaining * 4;
-      rotation += away * remaining * 0.018;
-      scaleX -= remaining * 0.012;
-      scaleY += remaining * 0.008;
+      x += away * remaining * 16 + Math.sin(now / 13) * remaining * 5;
+      rotation += away * remaining * 0.025;
+      scaleX -= remaining * 0.018;
+      scaleY += remaining * 0.012;
     }
 
     return { x, y, scaleX, scaleY, rotation, aura };
@@ -474,8 +514,23 @@ export function createRaidBattlefield({
   function drawBoss(now) {
     if (state.mode !== 'raid' || state.complete === 'defeat' || !state.cache?.boss) return;
 
-    const pose = bossPose(now);
-    const victoryDrop = state.complete === 'victory' ? Math.min(250, (now % 1500) * 0.15) : 0;
+    let pose = bossPose(now);
+    let victoryDrop = 0;
+
+    if (state.complete === 'victory') {
+      const elapsed = Math.max(0, now - state.completedAt);
+      const progress = clamp(elapsed / 1600, 0, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      victoryDrop = eased * 330;
+      pose = {
+        x: -progress * 12,
+        y: 0,
+        scaleX: 1 - progress * 0.05,
+        scaleY: 1 + progress * 0.03,
+        rotation: progress * 0.12,
+        aura: 0
+      };
+    }
 
     if (pose.aura > 0) {
       const gradient = ctx.createRadialGradient(BOSS_X, 118, 40, BOSS_X, 118, 230);
@@ -491,7 +546,7 @@ export function createRaidBattlefield({
     ctx.scale(pose.scaleX, pose.scaleY);
     ctx.translate(-BOSS_W / 2, -BOSS_H / 2);
 
-    if (now < state.bossHitUntil) {
+    if (now < state.bossHitUntil && state.complete !== 'victory') {
       ctx.filter = 'brightness(1.75) saturate(1.25)';
     }
     ctx.drawImage(state.cache.boss, 0, 0, BOSS_W, BOSS_H);
@@ -539,21 +594,138 @@ export function createRaidBattlefield({
     }
   }
 
+  function attackTargetX(type) {
+    if (type === 'left_slam') return WIDTH * 0.24;
+    if (type === 'right_slam') return WIDTH * 0.76;
+    return BOSS_X;
+  }
+
   function drawTelegraph(now) {
     const attack = state.telegraph;
     if (!attack || state.mode !== 'raid') return;
-    const pulse = 0.16 + (Math.sin(now / 90) + 1) * 0.07;
+
+    const start = attack.warnedAt || (attack.executeAt - 1650);
+    const duration = Math.max(1, attack.executeAt - start);
+    const progress = clamp((Date.now() - start) / duration, 0, 1);
+    const pulse = 0.55 + (Math.sin(now / 80) + 1) * 0.18;
+    const targetX = attackTargetX(attack.type);
+    const sourceX = BOSS_X;
+    const sourceY = 92;
+
     ctx.save();
-    ctx.globalAlpha = pulse;
+
+    // Keep the danger area readable under the giant charge effect.
+    ctx.globalAlpha = 0.08 + progress * 0.08;
     ctx.fillStyle = '#ff4058';
-    if (attack.type === 'left_slam') ctx.fillRect(0, 274, WIDTH / 2, HEIGHT - 274);
-    if (attack.type === 'right_slam') ctx.fillRect(WIDTH / 2, 274, WIDTH / 2, HEIGHT - 274);
-    if (attack.type === 'shockwave') {
-      ctx.strokeStyle = '#ffd05d';
-      ctx.lineWidth = 7;
+    if (attack.type === 'left_slam') ctx.fillRect(0, 270, WIDTH / 2, HEIGHT - 270);
+    if (attack.type === 'right_slam') ctx.fillRect(WIDTH / 2, 270, WIDTH / 2, HEIGHT - 270);
+    if (attack.type === 'shockwave') ctx.fillRect(0, 286, WIDTH, HEIGHT - 286);
+
+    // A huge energy mass visibly forms on Numberzilla before launch.
+    const chargeRadius = 10 + progress * 31 + Math.sin(now / 55) * 2;
+    const gradient = ctx.createRadialGradient(sourceX, sourceY, 2, sourceX, sourceY, chargeRadius * 1.8);
+    gradient.addColorStop(0, `rgba(255,245,190,${pulse})`);
+    gradient.addColorStop(0.35, `rgba(255,116,75,${0.75 * pulse})`);
+    gradient.addColorStop(1, 'rgba(255,55,45,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(sourceX, sourceY, chargeRadius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff0b0';
+    ctx.beginPath();
+    ctx.arc(sourceX, sourceY, Math.max(5, chargeRadius * 0.46), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.14 + progress * 0.26;
+    ctx.strokeStyle = '#ff8b64';
+    ctx.lineWidth = 3 + progress * 5;
+    ctx.setLineDash([9, 11]);
+    ctx.beginPath();
+    ctx.moveTo(sourceX, sourceY + chargeRadius);
+    ctx.lineTo(targetX, GROUND_Y - 3);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.globalAlpha = 0.28 + progress * 0.38;
+    ctx.strokeStyle = attack.type === 'shockwave' ? '#ffd76b' : '#ff6d5f';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(targetX, GROUND_Y + 2, 34 + progress * (attack.type === 'shockwave' ? 110 : 72), 9 + progress * 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawBossAttackEffect(now) {
+    const effect = state.bossAttackEffect;
+    if (!effect) return;
+
+    const t = clamp((now - effect.start) / effect.duration, 0, 1);
+    const targetX = attackTargetX(effect.type);
+    const sourceX = BOSS_X;
+    const sourceY = 92;
+    const flightEnd = 0.56;
+
+    if (t < flightEnd) {
+      const flight = t / flightEnd;
+      const eased = flight * flight * (3 - 2 * flight);
+      const x = lerp(sourceX, targetX, eased);
+      const y = lerp(sourceY, GROUND_Y - 10, eased) - Math.sin(Math.PI * flight) * 28;
+      const radius = 16 + flight * 28;
+
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.strokeStyle = '#ff6c52';
+      ctx.lineWidth = 18 + flight * 18;
       ctx.beginPath();
-      ctx.ellipse(BOSS_X, GROUND_Y + 2, 70, 10, 0, 0, Math.PI * 2);
+      ctx.moveTo(sourceX, sourceY);
+      ctx.lineTo(x, y);
       ctx.stroke();
+
+      const gradient = ctx.createRadialGradient(x, y, 4, x, y, radius * 1.8);
+      gradient.addColorStop(0, '#fff3bc');
+      gradient.addColorStop(0.24, '#ffbb63');
+      gradient.addColorStop(0.58, '#ff5d48');
+      gradient.addColorStop(1, 'rgba(255,62,45,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    const impact = clamp((t - flightEnd) / (1 - flightEnd), 0, 1);
+    const fade = 1 - impact;
+    const fullArena = effect.type === 'shockwave';
+    const radiusX = (fullArena ? 110 : 52) + impact * (fullArena ? 420 : 180);
+    const radiusY = 14 + impact * 54;
+
+    ctx.save();
+    ctx.globalAlpha = fade * 0.58;
+    ctx.fillStyle = fullArena ? '#ffd45e' : '#ff654e';
+    ctx.beginPath();
+    ctx.ellipse(targetX, GROUND_Y + 1, radiusX, radiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = fade * 0.86;
+    ctx.strokeStyle = '#fff3bd';
+    ctx.lineWidth = 8 - impact * 5;
+    ctx.beginPath();
+    ctx.ellipse(targetX, GROUND_Y + 1, radiusX * 0.82, radiusY * 0.72, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (!fullArena) {
+      ctx.globalAlpha = fade * 0.18;
+      ctx.fillStyle = '#ff3f35';
+      if (effect.type === 'left_slam') ctx.fillRect(0, 265, WIDTH / 2, HEIGHT - 265);
+      if (effect.type === 'right_slam') ctx.fillRect(WIDTH / 2, 265, WIDTH / 2, HEIGHT - 265);
+    } else {
+      ctx.globalAlpha = fade * 0.22;
+      ctx.fillStyle = '#ffd45e';
+      ctx.fillRect(0, 288, WIDTH, HEIGHT - 288);
     }
     ctx.restore();
   }
@@ -660,6 +832,7 @@ export function createRaidBattlefield({
 
     drawProjectiles(now);
     drawSpecials(now);
+    drawBossAttackEffect(now);
     drawFloaters(now);
 
     if (!state.assetsReady) {
