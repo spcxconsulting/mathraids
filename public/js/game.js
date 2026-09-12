@@ -30,6 +30,9 @@ const powerStatus = document.querySelector('#power-status');
 const powerMeterBar = document.querySelector('#power-meter-bar');
 const specialButton = document.querySelector('#special');
 const specialLabel = document.querySelector('#special-label');
+const victoryCelebration = document.querySelector('#victory-celebration');
+const victoryConfetti = document.querySelector('#victory-confetti');
+const victorySubtitle = victoryCelebration?.querySelector('.victory-subtitle');
 
 let socket;
 let playerId;
@@ -37,6 +40,7 @@ let currentQuestion;
 let raidComplete = false;
 let raidRunning = false;
 let reconnectTimer;
+let latestState;
 let power = {
   streak: 0,
   threshold: 5,
@@ -242,17 +246,74 @@ function handleMessage(payload) {
     raidComplete = true;
     raidRunning = false;
     battlefield.resetInput();
-    battlefield.complete(payload.outcome);
     updateState(payload.state);
     disableAnswers();
     specialButton.disabled = true;
+
+    if (payload.outcome === 'victory') {
+      startVictorySequence(payload.state);
+    } else {
+      battlefield.complete(payload.outcome);
+    }
+
     questionCategory.textContent = 'Raid complete';
-    questionText.textContent = payload.outcome === 'victory' ? 'Numberzilla defeated!' : 'The raid was defeated';
+    questionText.textContent = payload.outcome === 'victory' ? `${payload.state?.boss?.name || 'Boss'} defeated!` : 'The raid was defeated';
     feedback.className = payload.outcome === 'victory' ? 'feedback good' : 'feedback bad';
     feedback.textContent = payload.outcome === 'victory'
       ? 'Victory! The host has the private group report.'
       : 'Good attempt. The host can start another raid.';
     battlefieldStatus.textContent = feedback.textContent;
+  }
+}
+
+function startVictorySequence(state) {
+  const bossName = state?.boss?.name || 'The boss';
+  const configuredFallMs = Math.max(1600, Number(state?.boss?.victory?.bossFallMs) || 4200);
+  const rendererFallMs = 1600;
+  const leadInMs = Math.max(0, configuredFallMs - rendererFallMs);
+
+  if (victorySubtitle) victorySubtitle.textContent = `${bossName} is down. The raid wins together.`;
+  buildConfetti();
+  victoryCelebration?.classList.add('active');
+  victoryCelebration?.setAttribute('aria-hidden', 'false');
+
+  // The current boss renderer has a one-shot 1.6 second fall. Hold the defeated
+  // moment first so the complete victory beat lasts for the configured boss
+  // duration. The renderer can consume bossFallMs directly once animations are
+  // moved fully into reusable boss presentation classes.
+  setTimeout(() => battlefield.complete('victory'), leadInMs);
+
+  // Give the visible group a couple of harmless celebration hops. Remote hops are
+  // reconstructed locally, so this creates no extra live-room state requirement.
+  for (const delay of [300, 1250, 2200]) {
+    setTimeout(() => {
+      if (playerId) battlefield.jump();
+      for (const player of state?.players || []) {
+        if (player.id !== playerId) battlefield.jumpPlayer(player.id, Date.now() + 720);
+      }
+    }, delay);
+  }
+}
+
+function buildConfetti() {
+  if (!victoryConfetti || victoryConfetti.childElementCount) return;
+  for (let index = 0; index < 34; index += 1) {
+    const piece = document.createElement('span');
+    const x = 2 + ((index * 29) % 96);
+    const width = 4 + (index % 4) * 2;
+    const hue = (index * 53) % 360;
+    const rotation = `${(index * 37) % 180}deg`;
+    const duration = `${2.2 + (index % 5) * 0.32}s`;
+    const delay = `${(index % 9) * 0.11}s`;
+    const drift = `${-75 + ((index * 41) % 150)}px`;
+    piece.style.setProperty('--x', `${x}%`);
+    piece.style.setProperty('--w', `${width}px`);
+    piece.style.setProperty('--h', String(hue));
+    piece.style.setProperty('--r', rotation);
+    piece.style.setProperty('--d', duration);
+    piece.style.setProperty('--delay', delay);
+    piece.style.setProperty('--drift', drift);
+    victoryConfetti.append(piece);
   }
 }
 
@@ -285,6 +346,7 @@ function renderPower() {
 
 function updateState(state) {
   if (!state) return;
+  latestState = state;
   battlefield.syncState(state);
 
   const inLobby = state.status === 'lobby';
