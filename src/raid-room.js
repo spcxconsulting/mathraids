@@ -238,7 +238,7 @@ export class RaidRoom extends DurableObject {
 
     if (event.type === 'move') {
       const direction = event.direction === 'left' ? -1 : event.direction === 'right' ? 1 : 0;
-      if (!direction || this.room.status !== 'running') return;
+      if (!direction || this.room.status === 'complete') return;
       player.x = clamp(player.x + direction * 2.4, 4, 96);
       player.facing = direction < 0 ? 'left' : 'right';
       this.broadcast({
@@ -252,7 +252,7 @@ export class RaidRoom extends DurableObject {
 
     if (event.type === 'jump') {
       const now = Date.now();
-      if (this.room.status !== 'running' || now < (player.jumpReadyAt || 0)) return;
+      if (this.room.status === 'complete' || now < (player.jumpReadyAt || 0)) return;
       player.airborneUntil = now + 650;
       player.jumpReadyAt = now + 900;
       this.broadcast({
