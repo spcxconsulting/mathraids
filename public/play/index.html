@@ -6,6 +6,7 @@
   <title>Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/game.css">
+  <link rel="stylesheet" href="/css/lobby.css">
 </head>
 <body class="game-page">
   <main class="game-shell">
@@ -30,6 +31,23 @@
       <div class="skyline skyline-back"></div>
       <div class="skyline skyline-front"></div>
 
+      <div class="lobby-scenery" id="lobby-scenery" aria-hidden="true">
+        <div class="lobby-banner">
+          <strong>Raid staging area</strong>
+          <span>Run around while your classmates join</span>
+        </div>
+        <div class="lobby-torch torch-left"><span>🔥</span></div>
+        <div class="lobby-torch torch-right"><span>🔥</span></div>
+        <div class="raid-gate">
+          <div class="raid-gate-ring"></div>
+          <div class="raid-gate-core"></div>
+          <div class="raid-gate-label">CITY UNDER SIEGE</div>
+        </div>
+        <div class="campfire"><span>🔥</span><i></i></div>
+        <div class="supply-crate crate-left">✦</div>
+        <div class="supply-crate crate-right">✦</div>
+      </div>
+
       <div class="danger-zone" id="danger-zone" aria-hidden="true"></div>
       <div class="shockwave" id="shockwave" aria-hidden="true"></div>
       <div class="boss-warning" id="boss-warning" aria-live="polite"></div>
@@ -44,6 +62,14 @@
       <div class="ground-lines" aria-hidden="true"></div>
       <div class="players-layer" id="players-layer"></div>
       <div class="effects-layer" id="effects-layer" aria-hidden="true"></div>
+
+      <div class="raid-transition" id="raid-transition" aria-hidden="true">
+        <div class="raid-transition-card">
+          <span>⚔️</span>
+          <strong>Entering the raid...</strong>
+          <small>Numberzilla awaits</small>
+        </div>
+      </div>
     </section>
 
     <section class="question-panel">
@@ -63,5 +89,6 @@
   </main>
 
   <script type="module" src="/js/game.js"></script>
+  <script type="module" src="/js/lobby.js"></script>
 </body>
 </html>
