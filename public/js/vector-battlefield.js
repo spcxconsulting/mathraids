@@ -9,6 +9,12 @@ const GRAVITY = 1500;
 const POSITION_SEND_MS = 100;
 const REMOTE_LERP = 18;
 const LABEL_LIMIT = 16;
+const PLAYER_WIDTH = 32;
+const PLAYER_HEIGHT = 40;
+const BOSS_WIDTH = 430;
+const BOSS_HEIGHT = 376;
+const BOSS_CENTER_X = WIDTH / 2;
+const BOSS_TOP = -34;
 
 const ART = {
   cityBack: '/art/city-back.svg',
@@ -100,6 +106,12 @@ export function createRaidBattlefield({
     return state.localPlayerId ? state.players.get(state.localPlayerId) : null;
   }
 
+  function faceTowardBoss(entry) {
+    if (!entry || state.mode !== 'raid') return;
+    if (entry.x < BOSS_CENTER_X - 1) entry.facing = 'right';
+    else if (entry.x > BOSS_CENTER_X + 1) entry.facing = 'left';
+  }
+
   function rebuildCache() {
     if (!state.rawAssets) return;
     const scale = state.renderScale;
@@ -107,9 +119,9 @@ export function createRaidBattlefield({
       cityBack: makeRaster(state.rawAssets.cityBack, WIDTH, HEIGHT, scale),
       cityFront: makeRaster(state.rawAssets.cityFront, WIDTH, HEIGHT, scale),
       staging: makeRaster(state.rawAssets.staging, WIDTH, HEIGHT, scale),
-      dps: makeRaster(state.rawAssets.dps, 44, 55, scale),
-      healer: makeRaster(state.rawAssets.healer, 44, 55, scale),
-      boss: makeRaster(state.rawAssets.boss, 320, 280, scale)
+      dps: makeRaster(state.rawAssets.dps, PLAYER_WIDTH, PLAYER_HEIGHT, scale),
+      healer: makeRaster(state.rawAssets.healer, PLAYER_WIDTH, PLAYER_HEIGHT, scale),
+      boss: makeRaster(state.rawAssets.boss, BOSS_WIDTH, BOSS_HEIGHT, scale)
     };
     state.assetsReady = true;
   }
@@ -169,6 +181,7 @@ export function createRaidBattlefield({
     }
     entry.name = player.name || entry.name;
     entry.class = player.class === 'healer' ? 'healer' : 'dps';
+    faceTowardBoss(entry);
     return entry;
   }
 
@@ -181,13 +194,14 @@ export function createRaidBattlefield({
 
     for (const player of serverState.players || []) {
       const entry = ensurePlayer(player);
-      entry.facing = player.facing === 'left' ? 'left' : 'right';
+      if (state.mode === 'lobby') entry.facing = player.facing === 'left' ? 'left' : 'right';
       if (player.id !== state.localPlayerId) {
         entry.targetX = pctToX(player.x);
       } else if (state.lastSentX === null) {
         entry.x = pctToX(player.x);
         entry.targetX = entry.x;
       }
+      faceTowardBoss(entry);
     }
 
     if (serverState.pendingAttack?.executeAt > Date.now()) showTelegraph(serverState.pendingAttack);
@@ -196,15 +210,19 @@ export function createRaidBattlefield({
   function setLocalPlayerId(id) {
     state.localPlayerId = id;
     const entry = state.players.get(id);
-    if (entry) entry.targetX = entry.x;
+    if (entry) {
+      entry.targetX = entry.x;
+      faceTowardBoss(entry);
+    }
   }
 
   function movePlayer(id, xPct, facing) {
     const entry = state.players.get(id);
     if (!entry) return;
-    if (facing) entry.facing = facing === 'left' ? 'left' : 'right';
+    if (state.mode === 'lobby' && facing) entry.facing = facing === 'left' ? 'left' : 'right';
     if (id === state.localPlayerId) return;
     entry.targetX = pctToX(xPct);
+    faceTowardBoss(entry);
   }
 
   function jumpPlayer(id) {
@@ -219,6 +237,7 @@ export function createRaidBattlefield({
     player.grounded = false;
     player.vy = -JUMP_SPEED;
     player.y -= 2;
+    faceTowardBoss(player);
     onJump();
     draw(performance.now());
     return true;
@@ -230,8 +249,9 @@ export function createRaidBattlefield({
     if (!player || player.dazedUntil > Date.now()) return;
     const axis = state.input.left === state.input.right ? 0 : state.input.left ? -1 : 1;
     if (axis !== 0) {
-      player.facing = axis < 0 ? 'left' : 'right';
       player.x = clamp(player.x + axis * 3, MIN_X, MAX_X);
+      if (state.mode === 'raid') faceTowardBoss(player);
+      else player.facing = axis < 0 ? 'left' : 'right';
       draw(performance.now());
     }
   }
@@ -239,18 +259,19 @@ export function createRaidBattlefield({
   function playerAction(action) {
     const entry = state.players.get(action.playerId);
     if (!entry || state.mode !== 'raid') return;
+    faceTowardBoss(entry);
     state.projectiles.push({
       x0: entry.x,
-      y0: entry.y - 42,
-      x1: WIDTH / 2 + (entry.x - WIDTH / 2) * 0.08,
-      y1: 118,
+      y0: entry.y - 30,
+      x1: BOSS_CENTER_X + (entry.x - BOSS_CENTER_X) * 0.045,
+      y1: 82,
       start: performance.now(),
-      duration: action.action === 'heal' ? 420 : 320,
+      duration: action.action === 'heal' ? 440 : 330,
       heal: action.action === 'heal',
       damage: action.damage || 0
     });
     if (action.action === 'heal' && action.playerId === state.localPlayerId) {
-      state.floaters.push({ x: entry.x, y: entry.y - 64, text: `+${action.healing || 0}`, color: '#9dff91', start: performance.now(), duration: 550 });
+      state.floaters.push({ x: entry.x, y: entry.y - 52, text: `+${action.healing || 0}`, color: '#9dff91', start: performance.now(), duration: 550 });
     }
   }
 
@@ -263,7 +284,7 @@ export function createRaidBattlefield({
     state.bossFlashUntil = performance.now() + 120;
     if ((payload.dodgedPlayerIds || []).includes(state.localPlayerId)) {
       const local = localPlayer();
-      if (local) state.floaters.push({ x: local.x, y: local.y - 58, text: 'DODGE!', color: '#71ddff', start: performance.now(), duration: 550 });
+      if (local) state.floaters.push({ x: local.x, y: local.y - 50, text: 'DODGE!', color: '#71ddff', start: performance.now(), duration: 550 });
     }
   }
 
@@ -283,8 +304,9 @@ export function createRaidBattlefield({
     const axis = state.input.left === state.input.right ? 0 : state.input.left ? -1 : 1;
     if (axis !== 0) {
       player.x = clamp(player.x + axis * RUN_SPEED * dt, MIN_X, MAX_X);
-      player.facing = axis < 0 ? 'left' : 'right';
+      if (state.mode === 'lobby') player.facing = axis < 0 ? 'left' : 'right';
     }
+    faceTowardBoss(player);
 
     if (!player.grounded) {
       player.vy += GRAVITY * dt;
@@ -308,6 +330,7 @@ export function createRaidBattlefield({
 
   function updateRemote(entry, dt, now) {
     entry.x += (entry.targetX - entry.x) * Math.min(1, REMOTE_LERP * dt);
+    faceTowardBoss(entry);
     if (entry.remoteJumpStart) {
       const t = (now - entry.remoteJumpStart) / entry.remoteJumpDuration;
       if (t >= 1) {
@@ -324,7 +347,7 @@ export function createRaidBattlefield({
       const t = (now - p.start) / p.duration;
       if (t >= 1) {
         state.bossFlashUntil = now + 75;
-        state.floaters.push({ x: WIDTH / 2 + 48, y: 100, text: `-${p.damage}`, color: p.heal ? '#b8ffa9' : '#ffd080', start: now, duration: 500 });
+        state.floaters.push({ x: BOSS_CENTER_X + 66, y: 72, text: `-${p.damage}`, color: p.heal ? '#b8ffa9' : '#ffd080', start: now, duration: 500 });
         return false;
       }
       return true;
@@ -351,32 +374,49 @@ export function createRaidBattlefield({
     const y = entry.y;
     const jumpHeight = Math.max(0, GROUND_Y - y);
     ctx.save();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.2;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(x, GROUND_Y + 4, Math.max(8, 17 - jumpHeight / 8), 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, GROUND_Y + 3, Math.max(6, 12 - jumpHeight / 11), 3, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     const cache = entry.class === 'healer' ? state.cache?.healer : state.cache?.dps;
-    drawRaster(cache, x - 22, y - 55, 44, 55, entry.facing === 'left', entry.dazedUntil > Date.now() ? 0.5 : 1);
+    drawRaster(
+      cache,
+      x - PLAYER_WIDTH / 2,
+      y - PLAYER_HEIGHT,
+      PLAYER_WIDTH,
+      PLAYER_HEIGHT,
+      entry.facing === 'left',
+      entry.dazedUntil > Date.now() ? 0.5 : 1
+    );
 
     if (isLocal || state.remoteLabelsEnabled) {
-      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.font = '600 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = isLocal ? '#a7ff9e' : '#eef6ff';
-      ctx.strokeStyle = 'rgba(5,12,20,.8)';
+      ctx.strokeStyle = 'rgba(5,12,20,.85)';
       ctx.lineWidth = 3;
-      ctx.strokeText(isLocal ? `${entry.name} (you)` : entry.name, x, Math.min(352, y + 18));
-      ctx.fillText(isLocal ? `${entry.name} (you)` : entry.name, x, Math.min(352, y + 18));
+      const labelY = Math.min(352, y + 15);
+      ctx.strokeText(isLocal ? `${entry.name} (you)` : entry.name, x, labelY);
+      ctx.fillText(isLocal ? `${entry.name} (you)` : entry.name, x, labelY);
     }
   }
 
   function drawBoss(now) {
     if (state.mode !== 'raid' || state.complete === 'defeat') return;
-    const drop = state.complete === 'victory' ? Math.min(170, (now % 1200) * 0.12) : 0;
-    const alpha = now < state.bossFlashUntil ? 0.55 : 1;
-    drawRaster(state.cache?.boss, WIDTH / 2 - 160, 18 + drop, 320, 280, false, alpha);
+    const drop = state.complete === 'victory' ? Math.min(210, (now % 1400) * 0.13) : 0;
+    const alpha = now < state.bossFlashUntil ? 0.55 : 0.94;
+    drawRaster(
+      state.cache?.boss,
+      BOSS_CENTER_X - BOSS_WIDTH / 2,
+      BOSS_TOP + drop,
+      BOSS_WIDTH,
+      BOSS_HEIGHT,
+      false,
+      alpha
+    );
   }
 
   function drawTelegraph(now) {
@@ -402,7 +442,7 @@ export function createRaidBattlefield({
     for (const p of state.projectiles) {
       const t = clamp((now - p.start) / p.duration, 0, 1);
       const x = p.x0 + (p.x1 - p.x0) * t;
-      const y = p.y0 + (p.y1 - p.y0) * t - Math.sin(Math.PI * t) * 62;
+      const y = p.y0 + (p.y1 - p.y0) * t - Math.sin(Math.PI * t) * 74;
       ctx.save();
       ctx.translate(x, y);
       const angle = Math.atan2(p.y1 - p.y0, p.x1 - p.x0);
@@ -410,19 +450,19 @@ export function createRaidBattlefield({
       if (p.heal) {
         ctx.fillStyle = '#8aff99';
         ctx.beginPath();
-        ctx.arc(0, 0, 7, 0, Math.PI * 2);
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#e8ffef';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.moveTo(0, -9); ctx.lineTo(0, 9); ctx.stroke();
+        ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.moveTo(0, -8); ctx.lineTo(0, 8); ctx.stroke();
       } else {
         ctx.strokeStyle = '#ffd27a';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.moveTo(-15, 0); ctx.lineTo(12, 0); ctx.stroke();
+        ctx.moveTo(-13, 0); ctx.lineTo(10, 0); ctx.stroke();
         ctx.fillStyle = '#fff0b4';
-        ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(6, -5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(5, -4); ctx.lineTo(5, 4); ctx.closePath(); ctx.fill();
       }
       ctx.restore();
     }
@@ -518,7 +558,10 @@ export function createRaidBattlefield({
     game: null,
     setLocalPlayerId,
     syncState,
-    setMode(mode) { state.mode = mode === 'lobby' ? 'lobby' : 'raid'; },
+    setMode(mode) {
+      state.mode = mode === 'lobby' ? 'lobby' : 'raid';
+      for (const entry of state.players.values()) faceTowardBoss(entry);
+    },
     movePlayer,
     jumpPlayer,
     playerAction,
