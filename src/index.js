@@ -5,7 +5,10 @@ export { RaidRoom };
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' }
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store'
+    }
   });
 }
 
@@ -15,10 +18,12 @@ function normaliseCode(value = '') {
 
 function createCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
   const bytes = crypto.getRandomValues(new Uint8Array(6));
-  for (const byte of bytes) code += alphabet[byte % alphabet.length];
-  return code;
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+function roomFor(env, code) {
+  return env.RAID_ROOMS.get(env.RAID_ROOMS.idFromName(code));
 }
 
 export default {
@@ -31,35 +36,63 @@ export default {
 
     if (url.pathname === '/api/raids' && request.method === 'POST') {
       const body = await request.json().catch(() => ({}));
-      const code = createCode();
-      const id = env.RAID_ROOMS.idFromName(code);
-      const room = env.RAID_ROOMS.get(id);
-      const response = await room.fetch('https://raid.internal/create', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const code = createCode();
+        const room = roomFor(env, code);
+        const response = await room.fetch('https://raid.internal/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            mode: body.mode || 'ranked',
+            boss: body.boss || 'numberzilla',
+            topic: body.topic || 'multiplication',
+            difficulty: body.difficulty || 2
+          })
+        });
+
+        if (response.status === 409) continue;
+        if (!response.ok) return response;
+
+        const created = await response.json();
+        return json({
           code,
-          boss: body.boss || 'numberzilla',
-          topic: body.topic || 'multiplication',
-          difficulty: body.difficulty || 'standard'
-        })
+          teacherKey: created.teacherKey,
+          joinUrl: `${url.origin}/join/?code=${code}`,
+          teacherUrl: `${url.origin}/teacher/raid.html?code=${code}&key=${created.teacherKey}`
+        }, 201);
+      }
+
+      return json({ error: 'Could not allocate a raid code. Please try again.' }, 503);
+    }
+
+    const reportMatch = url.pathname.match(/^\/api\/raids\/([A-Z0-9]{6})\/report$/i);
+    if (reportMatch && request.method === 'GET') {
+      const code = normaliseCode(reportMatch[1]);
+      const key = url.searchParams.get('key') || '';
+      return roomFor(env, code).fetch(`https://raid.internal/report?key=${encodeURIComponent(key)}`);
+    }
+
+    const startMatch = url.pathname.match(/^\/api\/raids\/([A-Z0-9]{6})\/start$/i);
+    if (startMatch && request.method === 'POST') {
+      const code = normaliseCode(startMatch[1]);
+      const key = url.searchParams.get('key') || '';
+      return roomFor(env, code).fetch(`https://raid.internal/start?key=${encodeURIComponent(key)}`, {
+        method: 'POST'
       });
-      if (!response.ok) return response;
-      return json({ code, joinUrl: `${url.origin}/join/?code=${code}` }, 201);
     }
 
     const raidMatch = url.pathname.match(/^\/api\/raids\/([A-Z0-9]{6})$/i);
     if (raidMatch && request.method === 'GET') {
       const code = normaliseCode(raidMatch[1]);
-      const id = env.RAID_ROOMS.idFromName(code);
-      return env.RAID_ROOMS.get(id).fetch('https://raid.internal/state');
+      return roomFor(env, code).fetch('https://raid.internal/state');
     }
 
     const wsMatch = url.pathname.match(/^\/ws\/([A-Z0-9]{6})$/i);
     if (wsMatch) {
       const code = normaliseCode(wsMatch[1]);
-      const id = env.RAID_ROOMS.idFromName(code);
-      return env.RAID_ROOMS.get(id).fetch(request);
+      return roomFor(env, code).fetch(request);
     }
 
     return env.ASSETS.fetch(request);
