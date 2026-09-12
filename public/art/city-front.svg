@@ -5,22 +5,41 @@
       <stop offset="1" stop-color="#151b22"/>
     </linearGradient>
   </defs>
+
   <g fill="#0d1926">
     <path d="M0 270V205h74v65z"/><path d="M56 270V181h92v89z"/><path d="M133 270v-60h68v60z"/>
     <path d="M456 270v-70h78v70z"/><path d="M518 270v-96h83v96z"/><path d="M585 270v-57h55v57z"/>
   </g>
+
   <g fill="#172838">
-    <path d="M185 270v-78h57v78z"/><path d="M232 270v-101h66v101z"/><path d="M344 270v-88h67v88z"/><path d="M401 270v-67h66v67z"/>
+    <path d="M185 270v-96h55v96z"/>
+    <path d="M228 270V121h67v149z"/>
+    <path d="M346 270V134h70v136z"/>
+    <path d="M407 270v-88h62v88z"/>
   </g>
-  <g fill="#7fd0ff" opacity="0.18">
+
+  <g fill="#20374a">
+    <path d="M242 121v-16h39v16z"/>
+    <path d="M360 134v-13h42v13z"/>
+  </g>
+
+  <g stroke="#334f64" stroke-width="3" stroke-linecap="round">
+    <path d="M261 105V84"/>
+    <path d="M381 121V94"/>
+  </g>
+
+  <g fill="#7fd0ff" opacity="0.2">
     <rect x="77" y="204" width="7" height="9" rx="1"/><rect x="102" y="225" width="7" height="9" rx="1"/>
-    <rect x="249" y="197" width="7" height="9" rx="1"/><rect x="274" y="222" width="7" height="9" rx="1"/>
-    <rect x="370" y="208" width="7" height="9" rx="1"/><rect x="544" y="203" width="7" height="9" rx="1"/>
+    <rect x="244" y="151" width="7" height="9" rx="1"/><rect x="271" y="178" width="7" height="9" rx="1"/>
+    <rect x="365" y="163" width="7" height="9" rx="1"/><rect x="391" y="195" width="7" height="9" rx="1"/>
+    <rect x="544" y="203" width="7" height="9" rx="1"/>
   </g>
+
   <rect x="0" y="270" width="640" height="90" fill="url(#road)"/>
   <rect x="0" y="270" width="640" height="4" fill="#77889b" opacity="0.55"/>
   <path d="M0 319H640" stroke="#44515e" stroke-width="2" stroke-dasharray="34 26" opacity="0.8"/>
   <path d="M0 348H640" stroke="#0a0e13" stroke-width="10" opacity="0.7"/>
+
   <g fill="#111921">
     <rect x="24" y="248" width="8" height="25" rx="2"/><circle cx="28" cy="244" r="8"/>
     <rect x="604" y="246" width="8" height="27" rx="2"/><circle cx="608" cy="242" r="8"/>
