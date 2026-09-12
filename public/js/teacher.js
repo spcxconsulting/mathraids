@@ -26,7 +26,11 @@ form.addEventListener('submit', async (event) => {
     if (!response.ok) throw new Error(data.error || 'Could not create raid');
 
     sessionStorage.setItem(`mathraids:teacher:${data.code}`, data.teacherKey);
-    window.location.assign(data.teacherUrl);
+
+    // Always stay on the browser's current origin. This keeps Wrangler local
+    // development on localhost even when the Worker has a production custom domain.
+    const teacherPath = `/teacher/raid.html?code=${encodeURIComponent(data.code)}&key=${encodeURIComponent(data.teacherKey)}`;
+    window.location.assign(teacherPath);
   } catch (error) {
     message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
     button.disabled = false;
@@ -35,7 +39,7 @@ form.addEventListener('submit', async (event) => {
 });
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, (character) => ({
+  return String(value).replace(/[&<>'\"]/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[character]));
 }
