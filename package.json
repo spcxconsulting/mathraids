@@ -9,9 +9,9 @@
     "check": "wrangler deploy --dry-run"
   },
   "dependencies": {
-    "phaser": "^4.0.0-rc.5"
+    "phaser": "^4.2.1"
   },
   "devDependencies": {
-    "wrangler": "^4.35.0"
+    "wrangler": "^4.131.1"
   }
 }
