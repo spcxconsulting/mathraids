@@ -6,6 +6,7 @@
   <title>Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/game.css">
+  <link rel="stylesheet" href="/css/power.css">
 </head>
 <body class="game-page">
   <main class="game-shell">
@@ -38,6 +39,22 @@
       <div class="question" id="question-text">Explore while everyone joins</div>
       <div class="answers" id="answers"></div>
       <div class="feedback" id="feedback" aria-live="polite">Move around, jump, and get ready for the teacher to start the raid.</div>
+
+      <div class="power-panel" id="power-panel" aria-label="Special ability charge">
+        <div class="power-copy">
+          <div>
+            <strong id="power-name">Special ability</strong>
+            <div class="small muted" id="power-description">Build a 5-answer streak to charge it.</div>
+          </div>
+          <span class="power-status" id="power-status">0 / 5</span>
+        </div>
+        <div class="power-meter" aria-hidden="true"><span id="power-meter-bar"></span></div>
+        <button class="btn special-btn" id="special" type="button" disabled>
+          <span id="special-label">Special ability</span>
+          <span class="special-key" aria-hidden="true">E</span>
+        </button>
+      </div>
+
       <div class="controls" aria-label="Movement controls">
         <button class="btn movement-btn" id="move-left" type="button">← Left</button>
         <button class="btn jump-btn" id="jump" type="button">↑ Jump</button>
