@@ -30,6 +30,12 @@ function startingPosition(index) {
   return 6 + ((index * 13) % 88);
 }
 
+function chooseBossAttack() {
+  const attacks = ['left_slam', 'right_slam', 'shockwave'];
+  const byte = crypto.getRandomValues(new Uint8Array(1))[0];
+  return attacks[byte % attacks.length];
+}
+
 export class RaidRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -85,7 +91,7 @@ export class RaidRoom extends DurableObject {
     const questionConfig = normaliseQuestionConfig(body.topic, body.difficulty);
 
     this.room = {
-      version: 1,
+      version: 2,
       code: body.code,
       teacherKey: randomKey(),
       status: 'lobby',
@@ -93,6 +99,7 @@ export class RaidRoom extends DurableObject {
       startedAt: null,
       endedAt: null,
       outcome: null,
+      pendingAttack: null,
       config: {
         mode: body.mode === 'individual' ? 'individual' : 'ranked',
         subject: 'math',
@@ -112,7 +119,9 @@ export class RaidRoom extends DurableObject {
       team: {
         questions: 0,
         correct: 0,
-        bossAttacks: 0
+        bossAttacks: 0,
+        dodges: 0,
+        bossHits: 0
       }
     };
 
@@ -156,6 +165,7 @@ export class RaidRoom extends DurableObject {
         name: safeName(url.searchParams.get('name')),
         class: url.searchParams.get('class') === 'healer' ? 'healer' : 'dps',
         x: startingPosition(playerIndex),
+        facing: 'right',
         joinedAt: Date.now(),
         attempted: 0,
         correct: 0,
@@ -163,7 +173,9 @@ export class RaidRoom extends DurableObject {
         totalResponseMs: 0,
         currentQuestion: null,
         wrongTimestamps: [],
-        stunnedUntil: 0
+        stunnedUntil: 0,
+        airborneUntil: 0,
+        jumpReadyAt: 0
       };
       this.room.players[player.id] = player;
 
@@ -175,6 +187,9 @@ export class RaidRoom extends DurableObject {
     } else {
       player.name = safeName(url.searchParams.get('name') || player.name);
       player.class = url.searchParams.get('class') === 'healer' ? 'healer' : 'dps';
+      player.facing ||= 'right';
+      player.airborneUntil ||= 0;
+      player.jumpReadyAt ||= 0;
     }
 
     this.ctx.acceptWebSocket(server, ['students', `player:${player.id}`]);
@@ -223,14 +238,28 @@ export class RaidRoom extends DurableObject {
 
     if (event.type === 'move') {
       const direction = event.direction === 'left' ? -1 : event.direction === 'right' ? 1 : 0;
-      if (!direction) return;
-      player.x = clamp(player.x + direction * 5, 4, 96);
-      this.broadcast({ type: 'player_move', playerId: player.id, x: player.x });
+      if (!direction || this.room.status !== 'running') return;
+      player.x = clamp(player.x + direction * 2.4, 4, 96);
+      player.facing = direction < 0 ? 'left' : 'right';
+      this.broadcast({
+        type: 'player_move',
+        playerId: player.id,
+        x: player.x,
+        facing: player.facing
+      });
       return;
     }
 
     if (event.type === 'jump') {
-      this.broadcast({ type: 'player_jump', playerId: player.id });
+      const now = Date.now();
+      if (this.room.status !== 'running' || now < (player.jumpReadyAt || 0)) return;
+      player.airborneUntil = now + 650;
+      player.jumpReadyAt = now + 900;
+      this.broadcast({
+        type: 'player_jump',
+        playerId: player.id,
+        airborneUntil: player.airborneUntil
+      });
     }
   }
 
@@ -243,6 +272,7 @@ export class RaidRoom extends DurableObject {
 
     this.room.status = 'running';
     this.room.startedAt = Date.now();
+    this.room.pendingAttack = null;
     this.room.boss.maxHealth = Math.max(300, players.length * 100);
     this.room.boss.health = this.room.boss.maxHealth;
     this.room.raidHealth = this.room.maxRaidHealth;
@@ -251,6 +281,9 @@ export class RaidRoom extends DurableObject {
       player.currentQuestion = this.newQuestion();
       player.stunnedUntil = 0;
       player.wrongTimestamps = [];
+      player.airborneUntil = 0;
+      player.jumpReadyAt = 0;
+      player.facing ||= 'right';
     }
 
     await this.saveRoom();
@@ -284,7 +317,6 @@ export class RaidRoom extends DurableObject {
 
     let damage = 0;
     let healing = 0;
-    let bossAttack = 0;
 
     if (correct) {
       player.correct += 1;
@@ -301,10 +333,20 @@ export class RaidRoom extends DurableObject {
 
       this.room.boss.health = Math.max(0, this.room.boss.health - damage);
 
-      if (this.room.team.correct % 12 === 0 && this.room.boss.health > 0) {
-        bossAttack = 8;
-        this.room.team.bossAttacks += 1;
-        this.room.raidHealth = Math.max(0, this.room.raidHealth - bossAttack);
+      this.broadcast({
+        type: 'player_action',
+        action: player.class === 'healer' ? 'heal' : 'attack',
+        playerId: player.id,
+        damage,
+        healing,
+        bossHealth: this.room.boss.health,
+        raidHealth: this.room.raidHealth
+      });
+
+      const playerCount = Object.keys(this.room.players).length;
+      const attackEvery = Math.max(12, playerCount * 2);
+      if (!this.room.pendingAttack && this.room.boss.health > 0 && this.room.team.correct % attackEvery === 0) {
+        await this.scheduleBossAttack();
       }
     } else {
       player.wrong += 1;
@@ -318,9 +360,7 @@ export class RaidRoom extends DurableObject {
     }
 
     if (this.room.boss.health <= 0) {
-      this.finishRaid('victory');
-    } else if (this.room.raidHealth <= 0) {
-      this.finishRaid('defeat');
+      await this.finishRaid('victory');
     } else {
       player.currentQuestion = this.newQuestion();
     }
@@ -337,10 +377,6 @@ export class RaidRoom extends DurableObject {
       nextQuestion: this.room.status === 'running' ? publicQuestion(player.currentQuestion) : null
     });
 
-    if (bossAttack) {
-      this.broadcast({ type: 'boss_attack', damage: bossAttack, raidHealth: this.room.raidHealth });
-    }
-
     this.broadcastPublic();
     this.sendTeacherState();
 
@@ -349,10 +385,78 @@ export class RaidRoom extends DurableObject {
     }
   }
 
-  finishRaid(outcome) {
+  async scheduleBossAttack() {
+    const now = Date.now();
+    const pending = {
+      id: crypto.randomUUID(),
+      type: chooseBossAttack(),
+      warnedAt: now,
+      executeAt: now + 1650
+    };
+
+    this.room.pendingAttack = pending;
+    await this.ctx.storage.setAlarm(pending.executeAt);
+    this.broadcast({ type: 'boss_telegraph', attack: pending });
+  }
+
+  async alarm() {
+    if (!this.room || this.room.status !== 'running' || !this.room.pendingAttack) return;
+
+    const attack = this.room.pendingAttack;
+    const players = Object.values(this.room.players);
+    const hitPlayerIds = [];
+    const dodgedPlayerIds = [];
+
+    for (const player of players) {
+      let hit = false;
+      if (attack.type === 'left_slam') hit = player.x < 50;
+      if (attack.type === 'right_slam') hit = player.x >= 50;
+      if (attack.type === 'shockwave') hit = (player.airborneUntil || 0) < attack.executeAt;
+
+      if (hit) hitPlayerIds.push(player.id);
+      else dodgedPlayerIds.push(player.id);
+    }
+
+    const hitCount = hitPlayerIds.length;
+    const playerCount = Math.max(1, players.length);
+    const damage = hitCount === 0
+      ? 0
+      : clamp(4 + Math.round((hitCount / playerCount) * 18), 4, 22);
+
+    this.room.pendingAttack = null;
+    this.room.team.bossAttacks += 1;
+    this.room.team.bossHits += hitCount;
+    this.room.team.dodges += dodgedPlayerIds.length;
+    this.room.raidHealth = Math.max(0, this.room.raidHealth - damage);
+
+    if (this.room.raidHealth <= 0) {
+      await this.finishRaid('defeat');
+    }
+
+    await this.saveRoom();
+
+    this.broadcast({
+      type: 'boss_attack',
+      attackType: attack.type,
+      damage,
+      hitPlayerIds,
+      dodgedPlayerIds,
+      raidHealth: this.room.raidHealth
+    });
+    this.broadcastPublic();
+    this.sendTeacherState();
+
+    if (this.room.status === 'complete') {
+      this.broadcast({ type: 'raid_complete', outcome: this.room.outcome, state: this.publicState() });
+    }
+  }
+
+  async finishRaid(outcome) {
     this.room.status = 'complete';
     this.room.outcome = outcome;
     this.room.endedAt = Date.now();
+    this.room.pendingAttack = null;
+    await this.ctx.storage.deleteAlarm();
     for (const player of Object.values(this.room.players)) player.currentQuestion = null;
   }
 
@@ -370,6 +474,10 @@ export class RaidRoom extends DurableObject {
     const teamAccuracy = this.room.team.questions
       ? Math.round((this.room.team.correct / this.room.team.questions) * 1000) / 10
       : 0;
+    const dodgeAttempts = (this.room.team.dodges || 0) + (this.room.team.bossHits || 0);
+    const dodgeRate = dodgeAttempts
+      ? Math.round(((this.room.team.dodges || 0) / dodgeAttempts) * 1000) / 10
+      : 0;
 
     return {
       code: this.room.code,
@@ -377,18 +485,21 @@ export class RaidRoom extends DurableObject {
       outcome: this.room.outcome,
       config: this.room.config,
       boss: this.room.boss,
+      pendingAttack: this.room.pendingAttack || null,
       raidHealth: this.room.raidHealth,
       maxRaidHealth: this.room.maxRaidHealth,
       team: {
         questions: this.room.team.questions,
         correct: this.room.team.correct,
-        accuracy: teamAccuracy
+        accuracy: teamAccuracy,
+        dodgeRate
       },
       players: Object.values(this.room.players).map((player) => ({
         id: player.id,
         name: player.name,
         class: player.class,
-        x: player.x
+        x: player.x,
+        facing: player.facing || 'right'
       }))
     };
   }
