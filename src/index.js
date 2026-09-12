@@ -1,4 +1,4 @@
-import { RaidRoom } from './raid-room-host.js';
+import { RaidRoom } from './raid-room-configurable.js';
 
 export { RaidRoom };
 
@@ -63,7 +63,6 @@ export default {
           hostKey,
           joinUrl: `${url.origin}/join/?code=${code}`,
           hostUrl,
-          // Transitional aliases for older clients.
           teacherKey: hostKey,
           teacherUrl: hostUrl
         }, 201);
