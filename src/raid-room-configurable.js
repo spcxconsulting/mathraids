@@ -2,9 +2,11 @@ import { RaidRoom as HostRaidRoom } from './raid-room-host.js';
 import {
   attackDamageForPower,
   attackEveryForAggression,
+  attackIntervalForAggression,
   bossHealthForPlayers,
   chooseAttack,
   getBossDefinition,
+  initialAttackDelayForAggression,
   normaliseBossTuning
 } from './bosses.js';
 import { publicQuestion } from './questions.js';
@@ -17,10 +19,6 @@ function decodeMessage(message) {
   }
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 export class RaidRoom extends HostRaidRoom {
   bossDefinition() {
     return getBossDefinition(this.room?.config?.boss || this.room?.boss?.id || 'numberzilla');
@@ -31,14 +29,25 @@ export class RaidRoom extends HostRaidRoom {
     return normaliseBossTuning(this.room?.boss?.tuning || {}, definition);
   }
 
+  bossAttackDelay(initial = false) {
+    const tuning = this.bossTuning();
+    const base = initial
+      ? initialAttackDelayForAggression(tuning.aggression)
+      : attackIntervalForAggression(tuning.aggression);
+    const randomByte = crypto.getRandomValues(new Uint8Array(1))[0];
+    const jitter = 0.9 + (randomByte / 255) * 0.2;
+    return Math.max(tuning.warningMs + 600, Math.round(base * jitter));
+  }
+
   async createRoom(request) {
     const response = await super.createRoom(request);
     if (!response.ok || !this.room) return response;
 
     const definition = this.bossDefinition();
-    this.room.version = Math.max(Number(this.room.version) || 0, 4);
+    this.room.version = Math.max(Number(this.room.version) || 0, 5);
     this.room.boss.name = definition.name;
     this.room.boss.tuning = normaliseBossTuning({}, definition);
+    this.room.boss.nextAttackAt = null;
     await this.saveRoom();
     return response;
   }
@@ -74,13 +83,26 @@ export class RaidRoom extends HostRaidRoom {
     const health = bossHealthForPlayers(players.length, tuning);
     this.room.boss.maxHealth = health;
     this.room.boss.health = health;
+    this.room.boss.nextAttackAt = null;
     await this.saveRoom();
 
-    // Super.startRaid has already started the room. Broadcast the tuned health
-    // immediately so every client and the host sees the configured encounter.
+    // Super.startRaid has already opened the encounter. Broadcast the tuned
+    // values immediately, then arm an independent boss cadence so the boss
+    // does not wait passively for players to reach an answer milestone.
     this.broadcastPublic();
     this.sendTeacherState();
+    await this.armNextBossAttack(true);
     return result;
+  }
+
+  async armNextBossAttack(initial = false) {
+    if (!this.room || this.room.status !== 'running') return;
+    if (this.room.pendingAttack || this.room.boss.health <= 0) return;
+
+    const executeTelegraphAt = Date.now() + this.bossAttackDelay(initial);
+    this.room.boss.nextAttackAt = executeTelegraphAt;
+    await this.saveRoom();
+    await this.ctx.storage.setAlarm(executeTelegraphAt);
   }
 
   async handleAnswer(ws, player, event) {
@@ -131,9 +153,12 @@ export class RaidRoom extends HostRaidRoom {
         raidHealth: this.room.raidHealth
       });
 
+      // Fast answering can provoke an earlier mechanic, but it is no longer
+      // the only way the boss attacks. This keeps high-performing groups busy.
       const playerCount = Object.keys(this.room.players).length;
       const attackEvery = attackEveryForAggression(playerCount, this.bossTuning().aggression);
       if (!this.room.pendingAttack && this.room.boss.health > 0 && this.room.team.correct % attackEvery === 0) {
+        this.room.boss.nextAttackAt = null;
         await this.scheduleBossAttack();
       }
     } else {
@@ -174,6 +199,8 @@ export class RaidRoom extends HostRaidRoom {
   }
 
   async scheduleBossAttack() {
+    if (!this.room || this.room.status !== 'running' || this.room.pendingAttack || this.room.boss.health <= 0) return;
+
     const now = Date.now();
     const tuning = this.bossTuning();
     const pending = {
@@ -183,13 +210,35 @@ export class RaidRoom extends HostRaidRoom {
       executeAt: now + tuning.warningMs
     };
 
+    this.room.boss.nextAttackAt = null;
     this.room.pendingAttack = pending;
+    await this.saveRoom();
     await this.ctx.storage.setAlarm(pending.executeAt);
     this.broadcast({ type: 'boss_telegraph', attack: pending });
+    this.broadcastPublic();
   }
 
   async alarm() {
-    if (!this.room || this.room.status !== 'running' || !this.room.pendingAttack) return;
+    if (!this.room || this.room.status !== 'running') return;
+
+    // An alarm with no active telegraph means the boss's independent cadence
+    // has elapsed. Start the warning now, then use the next alarm to resolve it.
+    if (!this.room.pendingAttack) {
+      const nextAttackAt = Number(this.room.boss.nextAttackAt) || 0;
+      if (!nextAttackAt) {
+        await this.armNextBossAttack(false);
+        return;
+      }
+
+      if (Date.now() + 50 < nextAttackAt) {
+        await this.ctx.storage.setAlarm(nextAttackAt);
+        return;
+      }
+
+      this.room.boss.nextAttackAt = null;
+      await this.scheduleBossAttack();
+      return;
+    }
 
     const attack = this.room.pendingAttack;
     const players = Object.values(this.room.players);
@@ -237,7 +286,10 @@ export class RaidRoom extends HostRaidRoom {
 
     if (this.room.status === 'complete') {
       this.broadcast({ type: 'raid_complete', outcome: this.room.outcome, state: this.publicState() });
+      return;
     }
+
+    await this.armNextBossAttack(false);
   }
 
   publicState() {
@@ -250,8 +302,10 @@ export class RaidRoom extends HostRaidRoom {
       tuning: this.bossTuning(),
       encounter: definition.encounter,
       art: definition.art,
+      presentation: definition.presentation,
       victory: definition.victory
     };
+    delete state.boss.nextAttackAt;
     return state;
   }
 }
