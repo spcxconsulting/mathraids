@@ -26,6 +26,15 @@
 
     <section class="battlefield phaser-battlefield" id="battlefield" aria-label="MathRaids game battlefield">
       <div id="phaser-game" class="phaser-game" aria-hidden="true"></div>
+      <div class="victory-celebration" id="victory-celebration" aria-hidden="true">
+        <div class="victory-glow"></div>
+        <div class="victory-confetti" id="victory-confetti"></div>
+        <div class="victory-copy">
+          <div class="victory-kicker">Raid complete</div>
+          <div class="victory-title">VICTORY!</div>
+          <div class="victory-subtitle">The group brought the boss down together.</div>
+        </div>
+      </div>
       <div class="battlefield-status" id="battlefield-status" role="status" aria-live="polite">
         Raid staging area. Move with A and D or the arrow keys. Jump with W, Up or Space.
       </div>
@@ -38,7 +47,7 @@
       </div>
       <div class="question" id="question-text">Explore while everyone joins</div>
       <div class="answers" id="answers"></div>
-      <div class="feedback" id="feedback" aria-live="polite">Move around, jump, and get ready for the teacher to start the raid.</div>
+      <div class="feedback" id="feedback" aria-live="polite">Move around, jump, and get ready for the host to start the raid.</div>
 
       <div class="power-panel" id="power-panel" aria-label="Special ability charge">
         <div class="power-copy">
