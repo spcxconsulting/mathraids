@@ -29,5 +29,6 @@ jobs:
           node --check public/js/game.js
           node --check public/js/phaser-battlefield.js
           node --check public/js/pixel-battlefield.js
+          node --check public/js/vector-battlefield.js
       - name: Validate Worker build
         run: npm run check
