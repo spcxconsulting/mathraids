@@ -250,8 +250,8 @@ function handleMessage(payload) {
     questionText.textContent = payload.outcome === 'victory' ? 'Numberzilla defeated!' : 'The raid was defeated';
     feedback.className = payload.outcome === 'victory' ? 'feedback good' : 'feedback bad';
     feedback.textContent = payload.outcome === 'victory'
-      ? 'Victory! Your teacher has the private class report.'
-      : 'Good attempt. Your teacher can start another raid.';
+      ? 'Victory! The host has the private group report.'
+      : 'Good attempt. The host can start another raid.';
     battlefieldStatus.textContent = feedback.textContent;
   }
 }
@@ -317,9 +317,9 @@ function updateState(state) {
     answersEl.replaceChildren();
     if (!feedback.classList.contains('bad')) {
       feedback.className = 'feedback';
-      feedback.textContent = 'Move around, jump, and get ready for the teacher to start the raid.';
+      feedback.textContent = 'Move around, jump, and get ready for the host to start the raid.';
     }
-    battlefieldStatus.textContent = 'Raid staging area. Students can move and jump while waiting for the teacher.';
+    battlefieldStatus.textContent = 'Raid staging area. Players can move and jump while waiting for the host.';
   } else if (state.status === 'running') {
     battlefieldStatus.textContent = 'Raid in progress. Watch the battlefield for boss attack warnings.';
   }
