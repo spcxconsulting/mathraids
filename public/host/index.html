@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Create a Raid - MathRaids</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="shell site-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span> MathRaids</a>
+    <nav class="nav"><a class="btn" href="/join/">Join raid</a></nav>
+  </header>
+
+  <main class="shell">
+    <section class="card form-card">
+      <div class="eyebrow">Host console</div>
+      <h1 style="font-size:clamp(2.5rem,7vw,4.5rem)">Create a raid</h1>
+      <p>Choose the maths challenge and start a shared raid for your group. It works for classrooms, families, tutoring, training sessions and other group play.</p>
+
+      <form id="create-raid-form">
+        <div class="form-row">
+          <label for="topic">Maths category</label>
+          <select id="topic" name="topic">
+            <option value="addition">Addition</option>
+            <option value="subtraction">Subtraction</option>
+            <option value="multiplication" selected>Multiplication</option>
+            <option value="division">Division</option>
+            <option value="mixed">Mixed arithmetic</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="difficulty">Difficulty</label>
+          <select id="difficulty" name="difficulty">
+            <option value="1">Level 1 - introductory</option>
+            <option value="2" selected>Level 2 - standard</option>
+            <option value="3">Level 3 - advanced</option>
+            <option value="4">Level 4 - challenge</option>
+          </select>
+          <div class="form-hint">Everyone uses the same band in Ranked Raid so the group shares one challenge level.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="mode">Raid mode</label>
+          <select id="mode" name="mode">
+            <option value="ranked" selected>Ranked Raid</option>
+            <option value="individual" disabled>Individual Mode - coming later</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="boss">Boss</label>
+          <select id="boss" name="boss">
+            <option value="numberzilla">Numberzilla - City Under Siege</option>
+          </select>
+        </div>
+
+        <div id="create-message" aria-live="polite"></div>
+        <button id="create-button" class="btn btn-primary btn-lg" type="submit">Create raid</button>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/js/host.js"></script>
+</body>
+</html>
