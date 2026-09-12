@@ -18,8 +18,6 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Prepare Phaser browser bundle
-        run: npm run prepare:phaser
       - name: Check JavaScript syntax
         run: |
           node --check src/index.js
@@ -30,6 +28,6 @@ jobs:
           node --check public/js/join.js
           node --check public/js/game.js
           node --check public/js/phaser-battlefield.js
-          node --check public/js/phaser-battlefield-fast.js
+          node --check public/js/pixel-battlefield.js
       - name: Validate Worker build
         run: npm run check
