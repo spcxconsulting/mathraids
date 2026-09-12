@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 640 360">
+  <defs><linearGradient id="portal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#91efff"/><stop offset="0.55" stop-color="#5d7cff"/><stop offset="1" stop-color="#7f57d9"/></linearGradient></defs>
+  <g transform="translate(500 125)">
+    <ellipse cx="0" cy="82" rx="54" ry="88" fill="#6ddcff" opacity="0.11"/>
+    <ellipse cx="0" cy="82" rx="40" ry="72" fill="none" stroke="#7869e8" stroke-width="10"/>
+    <ellipse cx="0" cy="82" rx="29" ry="58" fill="url(#portal)" opacity="0.72"/>
+    <path d="M-14 43c21 11 25 53 2 81M11 41c-18 18-13 58 11 79" fill="none" stroke="#d6fbff" stroke-width="4" opacity="0.75"/>
+  </g>
+  <g transform="translate(118 270)">
+    <ellipse cx="0" cy="26" rx="70" ry="13" fill="#000" opacity="0.25"/>
+    <rect x="-66" y="0" width="44" height="34" rx="4" fill="#795435" stroke="#3f2e23" stroke-width="4"/>
+    <rect x="30" y="4" width="50" height="30" rx="4" fill="#6d4b31" stroke="#3f2e23" stroke-width="4"/>
+    <path d="M-7 30c-18-22 10-28 0-50 26 14 24 34 10 50z" fill="#f38b32"/>
+    <path d="M0 28c-10-14 7-19 2-33 15 8 14 21 5 33z" fill="#ffd65e"/>
+  </g>
+</svg>
