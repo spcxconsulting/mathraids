@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>Raid - MathRaids</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="game-page">
+  <main class="game-shell">
+    <section class="game-topbar" aria-label="Raid status">
+      <div>
+        <strong id="boss-label">Numberzilla</strong>
+        <div class="progress boss" aria-label="Boss health"><span id="boss-bar"></span></div>
+        <div class="small muted" id="boss-hp-label">Waiting...</div>
+      </div>
+      <div class="badge" id="raid-code-label">Raid ------</div>
+      <div class="right">
+        <strong>Raid health</strong>
+        <div class="progress raid"><span id="raid-health-bar"></span></div>
+        <div class="small muted" id="team-stats">0 questions solved</div>
+      </div>
+    </section>
+
+    <section class="battlefield" id="battlefield" aria-label="Raid battlefield">
+      <div class="moon"></div>
+      <div class="skyline"></div>
+      <div class="boss-sprite" id="boss-sprite" aria-label="Numberzilla">🦖</div>
+      <div class="ground"></div>
+      <div class="players-layer" id="players-layer"></div>
+    </section>
+
+    <section class="question-panel">
+      <div class="small muted" style="text-align:center" id="question-category">Waiting for the teacher to start the raid</div>
+      <div class="question" id="question-text">Get ready...</div>
+      <div class="answers" id="answers"></div>
+      <div class="feedback" id="feedback" aria-live="polite"></div>
+      <div class="controls" aria-label="Movement controls">
+        <button class="btn" id="move-left" type="button">← Left</button>
+        <button class="btn" id="jump" type="button">↑ Jump</button>
+        <button class="btn" id="move-right" type="button">Right →</button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/game.js"></script>
+</body>
+</html>
