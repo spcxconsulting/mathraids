@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raid Host - MathRaids</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="shell site-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span> MathRaids</a>
+    <div class="badge" id="connection-status">Connecting...</div>
+  </header>
+
+  <main class="shell">
+    <section class="card" style="margin-bottom:20px">
+      <div class="eyebrow">Hosted raid</div>
+      <div class="grid grid-2" style="align-items:end">
+        <div>
+          <div class="muted small">Player join code</div>
+          <div id="raid-code" class="raid-code">------</div>
+          <div class="muted">Players can open <strong>mathraids.com/join</strong> and enter this code.</div>
+        </div>
+        <div class="actions" style="justify-content:flex-end">
+          <button class="btn" id="copy-link" type="button">Copy join link</button>
+          <button class="btn btn-success btn-lg" id="start-raid" type="button" disabled>Start raid</button>
+        </div>
+      </div>
+      <div id="host-message" aria-live="polite"></div>
+    </section>
+
+    <section class="teacher-layout">
+      <div class="grid">
+        <section class="card">
+          <div class="eyebrow">Raid status</div>
+          <h2 id="boss-name">Numberzilla</h2>
+          <div class="stat-grid">
+            <div class="stat"><span class="muted small">Status</span><span class="stat-value" id="raid-status">Lobby</span></div>
+            <div class="stat"><span class="muted small">Boss HP</span><span class="stat-value" id="boss-health">-</span></div>
+            <div class="stat"><span class="muted small">Questions</span><span class="stat-value" id="team-questions">0</span></div>
+            <div class="stat"><span class="muted small">Group accuracy</span><span class="stat-value" id="team-accuracy">0%</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="eyebrow">Private host report</div>
+          <h2>Player results</h2>
+          <p class="small">Individual results are visible to the host, not to the other players.</p>
+          <div style="overflow-x:auto">
+            <table class="report-table">
+              <thead><tr><th>Player</th><th>Role</th><th>Attempted</th><th>Correct</th><th>Accuracy</th><th>Avg. time</th></tr></thead>
+              <tbody id="report-body"><tr><td colspan="6" class="muted">Waiting for players...</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <aside class="card">
+        <div class="eyebrow">Lobby</div>
+        <h2><span id="player-count">0</span> raiders</h2>
+        <div class="roster" id="roster"><div class="muted">Waiting for players to join...</div></div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="/js/host-raid.js"></script>
+</body>
+</html>
