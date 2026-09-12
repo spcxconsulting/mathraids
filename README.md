@@ -9,6 +9,22 @@ MathRaids is a cooperative classroom maths game where students join a live raid,
 - Teacher-only learning reports.
 - Guest-first classroom join flow for the MVP.
 - Monetisation should focus on teacher and school tools, not pay-to-win student mechanics.
+- Ranked raids use standardised maths categories and difficulty bands so class and school rankings are comparable.
+- Teachers can unlock Individual Mode for differentiated learning, but personalised difficulty does not silently affect ranked results.
+
+## Maths modes
+
+### Ranked Raid
+
+All participants answer questions from the same configured operation set and difficulty band. Initial operation sets are addition, subtraction, multiplication and division. Questions can differ between students, but they are generated from the same rules and difficulty profile.
+
+Ranked Raid is the mode eligible for class, school and global rankings.
+
+### Individual Mode
+
+Teachers can enable Individual Mode when they want students to work at different difficulty levels while staying in the same raid. Students still contribute to the shared boss fight, but the raid is treated as unranked unless a future ranking model explicitly normalises personalised difficulty.
+
+Individual student performance remains private to the student and authorised teacher.
 
 ## MVP
 
