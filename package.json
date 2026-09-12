@@ -4,16 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:phaser": "node scripts/prepare-phaser.mjs",
-    "predev": "npm run prepare:phaser",
     "dev": "wrangler dev",
-    "predeploy": "npm run prepare:phaser",
     "deploy": "wrangler deploy",
-    "precheck": "npm run prepare:phaser",
     "check": "wrangler deploy --dry-run"
-  },
-  "dependencies": {
-    "phaser": "^4.2.1"
   },
   "devDependencies": {
     "wrangler": "^4.131.1"
