@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mathraids",
   "main": "./src/index.js",
-  "compatibility_date": "2026-09-13",
+  "compatibility_date": "2026-09-12",
   "routes": [
     {
       "pattern": "mathraids.com",
