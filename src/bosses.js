@@ -12,13 +12,25 @@ export const BOSS_DEFINITIONS = {
     defaults: {
       minHealth: 300,
       healthPerPlayer: 100,
-      aggression: 3,
+      aggression: 4,
       attackPower: 3,
       warningMs: 1650
     },
+    presentation: {
+      width: 560,
+      height: 490,
+      top: -92,
+      idleSway: 5,
+      idleBob: 2.5,
+      idleBreath: 0.007,
+      hitRecoil: 17,
+      defeatSink: 430,
+      defeatDrift: -12,
+      defeatTilt: 0.085
+    },
     victory: {
-      bossFallMs: 4200,
-      celebrationMs: 6500
+      bossFallMs: 4800,
+      celebrationMs: 7000
     }
   }
 };
@@ -46,6 +58,8 @@ export function bossHealthForPlayers(playerCount, tuning) {
   return Math.max(tuning.minHealth, Math.max(1, playerCount) * tuning.healthPerPlayer);
 }
 
+// Correct-answer pressure is a secondary trigger. The main boss cadence is now
+// time-based so the boss remains threatening even when the group pauses.
 export function attackEveryForAggression(playerCount, aggression) {
   const profiles = {
     1: { min: 18, perPlayer: 3 },
@@ -56,6 +70,22 @@ export function attackEveryForAggression(playerCount, aggression) {
   };
   const profile = profiles[clamp(Math.round(aggression), 1, 5)];
   return Math.max(profile.min, Math.ceil(Math.max(1, playerCount) * profile.perPlayer));
+}
+
+export function attackIntervalForAggression(aggression) {
+  const intervals = {
+    1: 15000,
+    2: 12000,
+    3: 9000,
+    4: 7000,
+    5: 5200
+  };
+  return intervals[clamp(Math.round(aggression), 1, 5)];
+}
+
+export function initialAttackDelayForAggression(aggression) {
+  const interval = attackIntervalForAggression(aggression);
+  return Math.max(2600, Math.round(interval * 0.55));
 }
 
 export function attackDamageForPower(hitCount, playerCount, attackPower) {
