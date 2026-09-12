@@ -16,4 +16,4 @@ if (!Phaser.Geom.Point) {
   });
 }
 
-export { createRaidBattlefield } from './phaser-battlefield-fast.js';
+export { createRaidBattlefield } from './phaser-battlefield-snappy.js';
