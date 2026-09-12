@@ -186,12 +186,12 @@ function handleMessage(payload) {
   }
 
   if (payload.type === 'player_move') {
-    battlefield.movePlayer(payload.playerId, payload.x, payload.facing);
+    battlefield.movePlayer(payload.playerId, payload.x, payload.facing, payload.airborneUntil);
     return;
   }
 
   if (payload.type === 'player_jump') {
-    battlefield.jumpPlayer(payload.playerId);
+    battlefield.jumpPlayer(payload.playerId, payload.airborneUntil);
     return;
   }
 
