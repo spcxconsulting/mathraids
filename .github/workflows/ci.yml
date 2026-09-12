@@ -18,14 +18,18 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Prepare Phaser browser bundle
+        run: npm run prepare:phaser
       - name: Check JavaScript syntax
         run: |
+          node --check scripts/prepare-phaser.mjs
           node --check src/index.js
           node --check src/raid-room.js
           node --check src/questions.js
           node --check public/js/teacher.js
           node --check public/js/teacher-raid.js
           node --check public/js/join.js
+          node --check public/js/phaser-battlefield.js
           node --check public/js/game.js
       - name: Validate Worker build
         run: npm run check
