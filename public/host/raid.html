@@ -42,6 +42,47 @@
           </div>
         </section>
 
+        <section class="card" id="boss-tuning-card">
+          <div class="eyebrow">Boss tuning</div>
+          <h2>Encounter settings</h2>
+          <p class="small muted">Tune the boss before the raid starts. These settings are saved with this raid.</p>
+          <div class="grid grid-2">
+            <div class="form-row">
+              <label for="boss-health-per-player">Health per player</label>
+              <input id="boss-health-per-player" type="number" min="25" max="500" step="5" value="100">
+              <div class="form-hint">More health makes the fight last longer as the group grows.</div>
+            </div>
+            <div class="form-row">
+              <label for="boss-min-health">Minimum boss health</label>
+              <input id="boss-min-health" type="number" min="100" max="5000" step="25" value="300">
+            </div>
+            <div class="form-row">
+              <label for="boss-aggression">Aggression <span id="boss-aggression-label" class="muted small">3 / 5</span></label>
+              <input id="boss-aggression" type="range" min="1" max="5" step="1" value="3">
+              <div class="form-hint">Higher aggression makes boss attacks trigger more often.</div>
+            </div>
+            <div class="form-row">
+              <label for="boss-attack-power">Attack power <span id="boss-attack-power-label" class="muted small">3 / 5</span></label>
+              <input id="boss-attack-power" type="range" min="1" max="5" step="1" value="3">
+              <div class="form-hint">Controls how much shared raid health is lost when players are hit.</div>
+            </div>
+            <div class="form-row">
+              <label for="boss-warning-ms">Attack warning</label>
+              <select id="boss-warning-ms">
+                <option value="900">0.9 seconds - very fast</option>
+                <option value="1250">1.25 seconds - fast</option>
+                <option value="1650" selected>1.65 seconds - standard</option>
+                <option value="2200">2.2 seconds - forgiving</option>
+                <option value="3000">3 seconds - very forgiving</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" id="save-boss-tuning" type="button">Save boss tuning</button>
+            <span class="small muted" id="boss-tuning-status">Uses the Numberzilla defaults until changed.</span>
+          </div>
+        </section>
+
         <section class="card">
           <div class="eyebrow">Private host report</div>
           <h2>Player results</h2>
