@@ -91,7 +91,7 @@ export class RaidRoom extends DurableObject {
     const questionConfig = normaliseQuestionConfig(body.topic, body.difficulty);
 
     this.room = {
-      version: 2,
+      version: 3,
       code: body.code,
       teacherKey: randomKey(),
       status: 'lobby',
@@ -175,7 +175,8 @@ export class RaidRoom extends DurableObject {
         wrongTimestamps: [],
         stunnedUntil: 0,
         airborneUntil: 0,
-        jumpReadyAt: 0
+        jumpReadyAt: 0,
+        lastPositionAt: Date.now()
       };
       this.room.players[player.id] = player;
 
@@ -190,6 +191,7 @@ export class RaidRoom extends DurableObject {
       player.facing ||= 'right';
       player.airborneUntil ||= 0;
       player.jumpReadyAt ||= 0;
+      player.lastPositionAt ||= Date.now();
     }
 
     this.ctx.acceptWebSocket(server, ['students', `player:${player.id}`]);
@@ -236,11 +238,36 @@ export class RaidRoom extends DurableObject {
       return;
     }
 
+    if (event.type === 'position') {
+      if (this.room.status === 'complete') return;
+      const requestedX = Number(event.x);
+      if (!Number.isFinite(requestedX)) return;
+
+      const now = Date.now();
+      const elapsed = clamp(now - (player.lastPositionAt || now), 16, 500);
+      const maxDelta = Math.max(1.2, elapsed * 0.032);
+      const targetX = clamp(requestedX, 4, 96);
+      const delta = clamp(targetX - player.x, -maxDelta, maxDelta);
+
+      player.x = clamp(player.x + delta, 4, 96);
+      player.facing = event.facing === 'left' ? 'left' : 'right';
+      player.lastPositionAt = now;
+
+      this.broadcast({
+        type: 'player_move',
+        playerId: player.id,
+        x: player.x,
+        facing: player.facing
+      });
+      return;
+    }
+
     if (event.type === 'move') {
       const direction = event.direction === 'left' ? -1 : event.direction === 'right' ? 1 : 0;
       if (!direction || this.room.status === 'complete') return;
       player.x = clamp(player.x + direction * 2.4, 4, 96);
       player.facing = direction < 0 ? 'left' : 'right';
+      player.lastPositionAt = Date.now();
       this.broadcast({
         type: 'player_move',
         playerId: player.id,
@@ -254,7 +281,7 @@ export class RaidRoom extends DurableObject {
       const now = Date.now();
       if (this.room.status === 'complete' || now < (player.jumpReadyAt || 0)) return;
       player.airborneUntil = now + 650;
-      player.jumpReadyAt = now + 900;
+      player.jumpReadyAt = now + 780;
       this.broadcast({
         type: 'player_jump',
         playerId: player.id,
@@ -284,6 +311,7 @@ export class RaidRoom extends DurableObject {
       player.airborneUntil = 0;
       player.jumpReadyAt = 0;
       player.facing ||= 'right';
+      player.lastPositionAt = Date.now();
     }
 
     await this.saveRoom();
