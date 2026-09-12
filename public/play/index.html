@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <title>Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/game.css">
 </head>
 <body class="game-page">
   <main class="game-shell">
@@ -14,7 +15,7 @@
         <div class="progress boss" aria-label="Boss health"><span id="boss-bar"></span></div>
         <div class="small muted" id="boss-hp-label">Waiting...</div>
       </div>
-      <div class="badge" id="raid-code-label">Raid ------</div>
+      <div class="badge raid-badge" id="raid-code-label">Raid ------</div>
       <div class="right">
         <strong>Raid health</strong>
         <div class="progress raid"><span id="raid-health-bar"></span></div>
@@ -23,22 +24,40 @@
     </section>
 
     <section class="battlefield" id="battlefield" aria-label="Raid battlefield">
+      <div class="sky-gradient"></div>
+      <div class="stars"></div>
       <div class="moon"></div>
-      <div class="skyline"></div>
-      <div class="boss-sprite" id="boss-sprite" aria-label="Numberzilla">🦖</div>
+      <div class="skyline skyline-back"></div>
+      <div class="skyline skyline-front"></div>
+
+      <div class="danger-zone" id="danger-zone" aria-hidden="true"></div>
+      <div class="shockwave" id="shockwave" aria-hidden="true"></div>
+      <div class="boss-warning" id="boss-warning" aria-live="polite"></div>
+
+      <div class="boss-platform"></div>
+      <div class="boss-sprite" id="boss-sprite" aria-label="Numberzilla">
+        <span class="boss-emoji" aria-hidden="true">🦖</span>
+        <span class="boss-shadow" aria-hidden="true"></span>
+      </div>
+
       <div class="ground"></div>
+      <div class="ground-lines" aria-hidden="true"></div>
       <div class="players-layer" id="players-layer"></div>
+      <div class="effects-layer" id="effects-layer" aria-hidden="true"></div>
     </section>
 
     <section class="question-panel">
-      <div class="small muted" style="text-align:center" id="question-category">Waiting for the teacher to start the raid</div>
+      <div class="question-meta">
+        <div class="small muted" id="question-category">Waiting for the teacher to start the raid</div>
+        <div class="small movement-hint">Move with A/D or ←/→ · Jump with W, ↑ or Space</div>
+      </div>
       <div class="question" id="question-text">Get ready...</div>
       <div class="answers" id="answers"></div>
       <div class="feedback" id="feedback" aria-live="polite"></div>
       <div class="controls" aria-label="Movement controls">
-        <button class="btn" id="move-left" type="button">← Left</button>
-        <button class="btn" id="jump" type="button">↑ Jump</button>
-        <button class="btn" id="move-right" type="button">Right →</button>
+        <button class="btn movement-btn" id="move-left" type="button">← Left</button>
+        <button class="btn jump-btn" id="jump" type="button">↑ Jump</button>
+        <button class="btn movement-btn" id="move-right" type="button">Right →</button>
       </div>
     </section>
   </main>
