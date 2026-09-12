@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Join a Raid - MathRaids</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="shell site-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span> MathRaids</a>
+  </header>
+
+  <main class="shell">
+    <section class="card form-card">
+      <div class="eyebrow">Student join</div>
+      <h1 style="font-size:clamp(2.5rem,7vw,4.5rem)">Join the raid</h1>
+      <p>No account is required for the classroom MVP. Your individual results are only shown to your teacher.</p>
+
+      <form id="join-form">
+        <div class="form-row">
+          <label for="code">Raid code</label>
+          <input id="code" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" required placeholder="ABC123" style="text-transform:uppercase;font-weight:900;letter-spacing:.16em">
+        </div>
+
+        <div class="form-row">
+          <label for="name">First name or classroom nickname</label>
+          <input id="name" name="name" maxlength="20" autocomplete="off" required placeholder="Sam">
+        </div>
+
+        <div class="form-row">
+          <label for="class">Choose your role</label>
+          <select id="class" name="class">
+            <option value="dps">⚔️ DPS - deal more boss damage</option>
+            <option value="healer">✨ Healer - heal the raid and deal some damage</option>
+          </select>
+        </div>
+
+        <div id="join-message" aria-live="polite"></div>
+        <button id="join-button" class="btn btn-primary btn-lg" type="submit">Join raid</button>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/js/join.js"></script>
+</body>
+</html>
