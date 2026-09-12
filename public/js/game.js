@@ -23,12 +23,27 @@ const feedback = document.querySelector('#feedback');
 const leftButton = document.querySelector('#move-left');
 const rightButton = document.querySelector('#move-right');
 const jumpButton = document.querySelector('#jump');
+const powerPanel = document.querySelector('#power-panel');
+const powerName = document.querySelector('#power-name');
+const powerDescription = document.querySelector('#power-description');
+const powerStatus = document.querySelector('#power-status');
+const powerMeterBar = document.querySelector('#power-meter-bar');
+const specialButton = document.querySelector('#special');
+const specialLabel = document.querySelector('#special-label');
 
 let socket;
 let playerId;
 let currentQuestion;
 let raidComplete = false;
+let raidRunning = false;
 let reconnectTimer;
+let power = {
+  streak: 0,
+  threshold: 5,
+  ready: false,
+  ability: join?.class === 'healer' ? 'renewal_burst' : 'power_shot',
+  abilityName: join?.class === 'healer' ? 'Renewal Burst' : 'Power Shot'
+};
 
 const battlefield = createRaidBattlefield({
   parent: 'phaser-game',
@@ -37,8 +52,20 @@ const battlefield = createRaidBattlefield({
 });
 
 raidCodeLabel.textContent = `Raid ${code}`;
+configurePowerUi();
 setupMovementButtons();
 connect();
+
+function configurePowerUi() {
+  const healer = join?.class === 'healer';
+  powerPanel.classList.toggle('healer', healer);
+  powerName.textContent = healer ? 'Renewal Burst' : 'Power Shot';
+  specialLabel.textContent = healer ? 'Use Renewal Burst' : 'Use Power Shot';
+  powerDescription.textContent = healer
+    ? '5 correct in a row charges a raid heal and boss strike.'
+    : '5 correct in a row charges a heavy boss strike.';
+  renderPower();
+}
 
 function setupMovementButtons() {
   bindHoldButton(leftButton, 'left');
@@ -51,7 +78,20 @@ function setupMovementButtons() {
     setTimeout(() => jumpButton.classList.remove('active'), 150);
   });
 
+  specialButton.addEventListener('click', activateSpecial);
+  window.addEventListener('keydown', (event) => {
+    if (event.repeat || event.key.toLowerCase() !== 'e') return;
+    event.preventDefault();
+    activateSpecial();
+  });
+
   window.addEventListener('blur', () => battlefield.resetInput());
+}
+
+function activateSpecial() {
+  if (!power.ready || !raidRunning || raidComplete || socket?.readyState !== WebSocket.OPEN) return;
+  specialButton.disabled = true;
+  send({ type: 'special' });
 }
 
 function bindHoldButton(button, direction) {
@@ -113,6 +153,7 @@ function handleMessage(payload) {
     battlefield.setLocalPlayerId(playerId);
     updateState(payload.state);
     if (payload.question) renderQuestion(payload.question);
+    send({ type: 'get_power' });
     return;
   }
 
@@ -131,6 +172,19 @@ function handleMessage(payload) {
     return;
   }
 
+  if (payload.type === 'power_state') {
+    updatePower(payload.power);
+    return;
+  }
+
+  if (payload.type === 'special_result') {
+    feedback.className = 'feedback good';
+    feedback.textContent = payload.healing > 0
+      ? `${payload.abilityName}! +${payload.healing} raid healing and ${payload.damage} boss damage.`
+      : `${payload.abilityName}! ${payload.damage} boss damage.`;
+    return;
+  }
+
   if (payload.type === 'player_move') {
     battlefield.movePlayer(payload.playerId, payload.x, payload.facing);
     return;
@@ -143,6 +197,11 @@ function handleMessage(payload) {
 
   if (payload.type === 'player_action') {
     battlefield.playerAction(payload);
+    return;
+  }
+
+  if (payload.type === 'player_special') {
+    battlefield.playerSpecial(payload);
     return;
   }
 
@@ -181,10 +240,12 @@ function handleMessage(payload) {
 
   if (payload.type === 'raid_complete') {
     raidComplete = true;
+    raidRunning = false;
     battlefield.resetInput();
     battlefield.complete(payload.outcome);
     updateState(payload.state);
     disableAnswers();
+    specialButton.disabled = true;
     questionCategory.textContent = 'Raid complete';
     questionText.textContent = payload.outcome === 'victory' ? 'Numberzilla defeated!' : 'The raid was defeated';
     feedback.className = payload.outcome === 'victory' ? 'feedback good' : 'feedback bad';
@@ -195,11 +256,39 @@ function handleMessage(payload) {
   }
 }
 
+function updatePower(nextPower) {
+  if (!nextPower) return;
+  power = { ...power, ...nextPower };
+  battlefield.setLocalPowerReady(Boolean(power.ready));
+  renderPower();
+}
+
+function renderPower() {
+  const threshold = Math.max(1, Number(power.threshold) || 5);
+  const streak = Math.min(threshold, Math.max(0, Number(power.streak) || 0));
+  const percent = power.ready ? 100 : (streak / threshold) * 100;
+
+  powerPanel.classList.toggle('ready', Boolean(power.ready));
+  specialButton.classList.toggle('ready', Boolean(power.ready));
+  powerMeterBar.style.width = `${percent}%`;
+  powerStatus.textContent = power.ready ? 'READY' : `${streak} / ${threshold}`;
+  specialButton.disabled = !power.ready || !raidRunning || raidComplete;
+
+  if (power.ready) {
+    powerDescription.textContent = `${power.abilityName} is charged. Use it when you are ready.`;
+  } else if (join?.class === 'healer') {
+    powerDescription.textContent = '5 correct in a row charges a raid heal and boss strike.';
+  } else {
+    powerDescription.textContent = '5 correct in a row charges a heavy boss strike.';
+  }
+}
+
 function updateState(state) {
   if (!state) return;
   battlefield.syncState(state);
 
   const inLobby = state.status === 'lobby';
+  raidRunning = state.status === 'running';
   bossLabel.textContent = inLobby ? 'Raid staging area' : state.boss?.name || 'Boss';
 
   const bossPercent = state.boss?.maxHealth ? (state.boss.health / state.boss.maxHealth) * 100 : 100;
@@ -234,6 +323,8 @@ function updateState(state) {
   } else if (state.status === 'running') {
     battlefieldStatus.textContent = 'Raid in progress. Watch the battlefield for boss attack warnings.';
   }
+
+  renderPower();
 }
 
 function renderQuestion(question) {
