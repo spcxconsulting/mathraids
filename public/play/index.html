@@ -6,80 +6,38 @@
   <title>Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/game.css">
-  <link rel="stylesheet" href="/css/lobby.css">
 </head>
 <body class="game-page">
   <main class="game-shell">
     <section class="game-topbar" aria-label="Raid status">
       <div>
-        <strong id="boss-label">Numberzilla</strong>
+        <strong id="boss-label">Raid staging area</strong>
         <div class="progress boss" aria-label="Boss health"><span id="boss-bar"></span></div>
-        <div class="small muted" id="boss-hp-label">Waiting...</div>
+        <div class="small muted" id="boss-hp-label">Waiting for the raid to start</div>
       </div>
       <div class="badge raid-badge" id="raid-code-label">Raid ------</div>
       <div class="right">
         <strong>Raid health</strong>
         <div class="progress raid"><span id="raid-health-bar"></span></div>
-        <div class="small muted" id="team-stats">0 questions solved</div>
+        <div class="small muted" id="team-stats">0 raiders</div>
       </div>
     </section>
 
-    <section class="battlefield" id="battlefield" aria-label="Raid battlefield">
-      <div class="sky-gradient"></div>
-      <div class="stars"></div>
-      <div class="moon"></div>
-      <div class="skyline skyline-back"></div>
-      <div class="skyline skyline-front"></div>
-
-      <div class="lobby-scenery" id="lobby-scenery" aria-hidden="true">
-        <div class="lobby-banner">
-          <strong>Raid staging area</strong>
-          <span>Run around while your classmates join</span>
-        </div>
-        <div class="lobby-torch torch-left"><span>🔥</span></div>
-        <div class="lobby-torch torch-right"><span>🔥</span></div>
-        <div class="raid-gate">
-          <div class="raid-gate-ring"></div>
-          <div class="raid-gate-core"></div>
-          <div class="raid-gate-label">CITY UNDER SIEGE</div>
-        </div>
-        <div class="campfire"><span>🔥</span><i></i></div>
-        <div class="supply-crate crate-left">✦</div>
-        <div class="supply-crate crate-right">✦</div>
-      </div>
-
-      <div class="danger-zone" id="danger-zone" aria-hidden="true"></div>
-      <div class="shockwave" id="shockwave" aria-hidden="true"></div>
-      <div class="boss-warning" id="boss-warning" aria-live="polite"></div>
-
-      <div class="boss-platform"></div>
-      <div class="boss-sprite" id="boss-sprite" aria-label="Numberzilla">
-        <span class="boss-emoji" aria-hidden="true">🦖</span>
-        <span class="boss-shadow" aria-hidden="true"></span>
-      </div>
-
-      <div class="ground"></div>
-      <div class="ground-lines" aria-hidden="true"></div>
-      <div class="players-layer" id="players-layer"></div>
-      <div class="effects-layer" id="effects-layer" aria-hidden="true"></div>
-
-      <div class="raid-transition" id="raid-transition" aria-hidden="true">
-        <div class="raid-transition-card">
-          <span>⚔️</span>
-          <strong>Entering the raid...</strong>
-          <small>Numberzilla awaits</small>
-        </div>
+    <section class="battlefield phaser-battlefield" id="battlefield" aria-label="MathRaids game battlefield">
+      <div id="phaser-game" class="phaser-game" aria-hidden="true"></div>
+      <div class="battlefield-status" id="battlefield-status" role="status" aria-live="polite">
+        Raid staging area. Move with A and D or the arrow keys. Jump with W, Up or Space.
       </div>
     </section>
 
     <section class="question-panel">
       <div class="question-meta">
-        <div class="small muted" id="question-category">Waiting for the teacher to start the raid</div>
+        <div class="small muted" id="question-category">Waiting area</div>
         <div class="small movement-hint">Move with A/D or ←/→ · Jump with W, ↑ or Space</div>
       </div>
-      <div class="question" id="question-text">Get ready...</div>
+      <div class="question" id="question-text">Explore while everyone joins</div>
       <div class="answers" id="answers"></div>
-      <div class="feedback" id="feedback" aria-live="polite"></div>
+      <div class="feedback" id="feedback" aria-live="polite">Move around, jump, and get ready for the teacher to start the raid.</div>
       <div class="controls" aria-label="Movement controls">
         <button class="btn movement-btn" id="move-left" type="button">← Left</button>
         <button class="btn jump-btn" id="jump" type="button">↑ Jump</button>
@@ -89,6 +47,5 @@
   </main>
 
   <script type="module" src="/js/game.js"></script>
-  <script type="module" src="/js/lobby.js"></script>
 </body>
 </html>
