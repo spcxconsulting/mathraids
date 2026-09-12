@@ -1,4 +1,4 @@
-import { RaidRoom } from './raid-room-synced.js';
+import { RaidRoom } from './raid-room-host.js';
 
 export { RaidRoom };
 
@@ -56,11 +56,16 @@ export default {
         if (!response.ok) return response;
 
         const created = await response.json();
+        const hostKey = created.hostKey || created.teacherKey;
+        const hostUrl = `${url.origin}/host/raid.html?code=${code}&key=${hostKey}`;
         return json({
           code,
-          teacherKey: created.teacherKey,
+          hostKey,
           joinUrl: `${url.origin}/join/?code=${code}`,
-          teacherUrl: `${url.origin}/teacher/raid.html?code=${code}&key=${created.teacherKey}`
+          hostUrl,
+          // Transitional aliases for older clients.
+          teacherKey: hostKey,
+          teacherUrl: hostUrl
         }, 201);
       }
 
