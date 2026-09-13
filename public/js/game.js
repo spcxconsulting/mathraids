@@ -33,6 +33,7 @@ const specialLabel = document.querySelector('#special-label');
 const victoryCelebration = document.querySelector('#victory-celebration');
 const victoryConfetti = document.querySelector('#victory-confetti');
 const victorySubtitle = victoryCelebration?.querySelector('.victory-subtitle');
+const wipeScreen = document.querySelector('#wipe-screen');
 
 let socket;
 let playerId;
@@ -41,20 +42,21 @@ let raidComplete = false;
 let raidRunning = false;
 let reconnectTimer;
 let latestState;
+let healTargeting = false;
 
 function rolePowerProfile(playerClass = join?.class) {
   if (playerClass === 'healer') {
     return {
       ability: 'renewal_burst',
       abilityName: 'Renewal Burst',
-      description: '5 correct in a row charges a group heal and boss strike.'
+      description: '5 correct in a row charges a powerful heal. In Hardcore, choose who receives it.'
     };
   }
   if (playerClass === 'tank') {
     return {
       ability: 'fortify',
       abilityName: 'Fortify',
-      description: '5 correct in a row restores Tank health and lands a smaller boss strike.'
+      description: '5 correct in a row charges a protective bubble and restores some Tank health.'
     };
   }
   return {
@@ -117,8 +119,42 @@ function setupMovementButtons() {
   window.addEventListener('blur', () => battlefield.resetInput());
 }
 
+function cancelHealTargeting() {
+  if (!healTargeting) return;
+  healTargeting = false;
+  battlefield.cancelHealTargeting?.();
+  renderPower();
+}
+
 function activateSpecial() {
   if (!power.ready || !raidRunning || raidComplete || socket?.readyState !== WebSocket.OPEN) return;
+
+  if (join?.class === 'healer' && latestState?.hardcore) {
+    if (healTargeting) {
+      cancelHealTargeting();
+      feedback.className = 'feedback';
+      feedback.textContent = 'Heal targeting cancelled.';
+      return;
+    }
+
+    const started = battlefield.beginHealTargeting?.((targetPlayerId) => {
+      healTargeting = false;
+      specialButton.disabled = true;
+      specialLabel.textContent = 'Casting Renewal Burst...';
+      send({ type: 'special', targetPlayerId });
+    });
+
+    if (started) {
+      healTargeting = true;
+      specialLabel.textContent = 'Cancel heal targeting';
+      specialButton.disabled = false;
+      feedback.className = 'feedback good';
+      feedback.textContent = 'Choose a glowing heal spot on the battlefield.';
+      battlefieldStatus.textContent = 'Renewal Burst ready. Choose a living raider to heal.';
+      return;
+    }
+  }
+
   specialButton.disabled = true;
   send({ type: 'special' });
 }
@@ -159,6 +195,7 @@ function connect() {
 
   socket.addEventListener('close', () => {
     if (raidComplete) return;
+    cancelHealTargeting();
     battlefield.resetInput();
     feedback.className = 'feedback bad';
     feedback.textContent = 'Connection lost. Reconnecting...';
@@ -207,9 +244,14 @@ function handleMessage(payload) {
   }
 
   if (payload.type === 'special_result') {
+    cancelHealTargeting();
     feedback.className = 'feedback good';
-    if (join?.class === 'tank' && payload.ability === 'fortify') {
-      feedback.textContent = `Fortify! +${payload.healing} HP and ${payload.damage} boss damage.`;
+    if (payload.ability === 'fortify') {
+      feedback.textContent = payload.healing > 0
+        ? `Fortify! Shield bubble active for 5 seconds. +${payload.healing} HP.`
+        : 'Fortify! Shield bubble active for 5 seconds.';
+    } else if (payload.ability === 'renewal_burst' && payload.targetName) {
+      feedback.textContent = `Renewal Burst healed ${payload.targetName} for ${payload.healing} HP.`;
     } else {
       feedback.textContent = payload.healing > 0
         ? `${payload.abilityName}! +${payload.healing} healing and ${payload.damage} boss damage.`
@@ -250,10 +292,11 @@ function handleMessage(payload) {
     const dodged = (payload.dodgedPlayerIds || []).includes(playerId);
     const guarded = (payload.protectedPlayerIds || []).includes(playerId);
     const guarding = (payload.guardTankIds || []).includes(playerId);
+    const actualDamage = Number(payload.damageByPlayer?.[playerId] ?? payload.damage ?? 0);
 
     if (guarded) {
       feedback.className = 'feedback good';
-      feedback.textContent = 'Tank guarded you! The hit was heavily reduced.';
+      feedback.textContent = `Tank protection reduced the hit to ${actualDamage} damage.`;
     } else if (guarding) {
       const protectedCount = (payload.protectedPlayerIds || []).length;
       feedback.className = 'feedback good';
@@ -261,7 +304,7 @@ function handleMessage(payload) {
     } else if (payload.hardcore) {
       feedback.className = hit ? 'feedback bad' : 'feedback good';
       feedback.textContent = hit
-        ? `You were hit for ${payload.damage} damage.`
+        ? `You were hit for ${actualDamage} damage.`
         : dodged
           ? 'Dodged! No damage taken.'
           : 'Boss attack resolved.';
@@ -280,6 +323,7 @@ function handleMessage(payload) {
   }
 
   if (payload.type === 'player_knocked_out') {
+    cancelHealTargeting();
     feedback.className = 'feedback bad';
     feedback.textContent = 'You are knocked out for this attempt. Watch the rest of the raid.';
     disableAnswers();
@@ -292,14 +336,17 @@ function handleMessage(payload) {
   }
 
   if (payload.type === 'error') {
+    cancelHealTargeting();
     feedback.className = 'feedback bad';
     feedback.textContent = payload.message || 'Raid error.';
+    renderPower();
     return;
   }
 
   if (payload.type === 'raid_complete') {
     raidComplete = true;
     raidRunning = false;
+    cancelHealTargeting();
     battlefield.resetInput();
     updateState(payload.state);
     disableAnswers();
@@ -307,6 +354,8 @@ function handleMessage(payload) {
 
     if (payload.outcome === 'victory') {
       startVictorySequence(payload.state);
+    } else if (payload.outcome === 'wipe') {
+      startWipeSequence();
     } else {
       battlefield.complete(payload.outcome);
     }
@@ -321,10 +370,16 @@ function handleMessage(payload) {
     feedback.textContent = payload.outcome === 'victory'
       ? 'Victory! The host has the private group report.'
       : payload.outcome === 'wipe'
-        ? 'The whole group was knocked out. Reset and try the raid again.'
+        ? 'Game over. Every raider was knocked out.'
         : 'Good attempt. The host can start another raid.';
     battlefieldStatus.textContent = feedback.textContent;
   }
+}
+
+function startWipeSequence() {
+  battlefield.complete('wipe');
+  wipeScreen?.classList.add('active');
+  wipeScreen?.setAttribute('aria-hidden', 'false');
 }
 
 function startVictorySequence(state) {
@@ -371,9 +426,9 @@ function buildConfetti() {
 function updatePower(nextPower) {
   if (!nextPower) return;
   power = { ...power, ...nextPower };
+  if (!power.ready) cancelHealTargeting();
   battlefield.setLocalPowerReady(Boolean(power.ready));
   powerName.textContent = power.abilityName || rolePowerProfile().abilityName;
-  specialLabel.textContent = `Use ${power.abilityName || rolePowerProfile().abilityName}`;
   renderPower();
 }
 
@@ -387,9 +442,16 @@ function renderPower() {
   powerMeterBar.style.width = `${percent}%`;
   powerStatus.textContent = power.ready ? 'READY' : `${streak} / ${threshold}`;
   specialButton.disabled = !power.ready || !raidRunning || raidComplete;
+  specialLabel.textContent = healTargeting
+    ? 'Cancel heal targeting'
+    : `Use ${power.abilityName || rolePowerProfile().abilityName}`;
 
-  if (power.ready) {
-    powerDescription.textContent = `${power.abilityName} is charged. Use it when you are ready.`;
+  if (healTargeting) {
+    powerDescription.textContent = 'Tap a glowing heal spot on a living raider.';
+  } else if (power.ready) {
+    powerDescription.textContent = join?.class === 'healer' && latestState?.hardcore
+      ? `${power.abilityName} is charged. Use it, then choose who to heal.`
+      : `${power.abilityName} is charged. Use it when you are ready.`;
   } else {
     powerDescription.textContent = rolePowerProfile().description;
   }
@@ -420,9 +482,7 @@ function updateState(state) {
     ? `${state.players?.length || 0} raiders assembling`
     : `${state.team?.questions || 0} questions · ${state.players?.length || 0} raiders${aliveText}${dodgeText}`;
 
-  if (state.pendingAttack && state.pendingAttack.executeAt > Date.now()) {
-    battlefield.showTelegraph(state.pendingAttack);
-  }
+  if (state.pendingAttack && state.pendingAttack.executeAt > Date.now()) battlefield.showTelegraph(state.pendingAttack);
 
   if (inLobby) {
     currentQuestion = null;
