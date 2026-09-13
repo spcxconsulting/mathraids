@@ -10,9 +10,13 @@ const JUMP_SPEED = 520;
 const GRAVITY = 1500;
 const POSITION_SEND_MS = 100;
 const REMOTE_LERP = 18;
-const REMOTE_JUMP_MS = 720;
+const REMOTE_JUMP_MS = 650;
 const LABEL_LIMIT = 14;
 const BOSS_X = WIDTH / 2;
+const JUMP_CHAIN_WINDOW_MS = 2200;
+const JUMP_LOCK_MS = 5000;
+const JUMP_BASE_READY_MS = 780;
+const JUMP_HEIGHT_STRENGTHS = [1, 0.92, 0.82, 0.68, 0.52, 0.36];
 
 const PLAYER_W = 24;
 const PLAYER_H = 30;
@@ -64,6 +68,19 @@ function makeRaster(image, logicalWidth, logicalHeight, scale) {
   context.imageSmoothingQuality = 'high';
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas;
+}
+
+function safePlayerClass(value) {
+  return ['dps', 'healer', 'tank'].includes(value) ? value : 'dps';
+}
+
+function jumpTiming(strength) {
+  const velocityScale = Math.sqrt(clamp(Number(strength) || 1, 0.2, 1));
+  return {
+    velocityScale,
+    airborneMs: Math.max(260, Math.round(REMOTE_JUMP_MS * velocityScale)),
+    readyMs: Math.max(420, Math.round(JUMP_BASE_READY_MS * velocityScale))
+  };
 }
 
 export function createRaidBattlefield({
@@ -274,7 +291,7 @@ export function createRaidBattlefield({
       entry = {
         id: player.id,
         name: player.name || 'Raider',
-        class: player.class === 'healer' ? 'healer' : 'dps',
+        class: safePlayerClass(player.class),
         x: pctToX(player.x),
         targetX: pctToX(player.x),
         y: GROUND_Y,
@@ -283,30 +300,42 @@ export function createRaidBattlefield({
         facing: player.facing === 'left' ? 'left' : 'right',
         remoteJumpStart: 0,
         remoteJumpDuration: REMOTE_JUMP_MS,
+        remoteJumpStrength: 1,
         dazedUntil: 0,
-        powerReady: false
+        powerReady: false,
+        jumpFatigue: Math.max(0, Number(player.jumpFatigue) || 0),
+        lastJumpAt: Number(player.lastJumpAt) || 0,
+        jumpReadyAt: Number(player.jumpReadyAt) || 0,
+        jumpLockedUntil: Number(player.jumpLockedUntil) || 0
       };
       state.players.set(player.id, entry);
     }
     entry.name = player.name || entry.name;
-    entry.class = player.class === 'healer' ? 'healer' : 'dps';
+    entry.class = safePlayerClass(player.class || entry.class);
+    if (Number.isFinite(Number(player.jumpFatigue))) entry.jumpFatigue = Math.max(0, Number(player.jumpFatigue));
+    if (Number.isFinite(Number(player.lastJumpAt))) entry.lastJumpAt = Number(player.lastJumpAt);
+    if (Number.isFinite(Number(player.jumpReadyAt))) entry.jumpReadyAt = Number(player.jumpReadyAt);
+    if (Number.isFinite(Number(player.jumpLockedUntil))) entry.jumpLockedUntil = Number(player.jumpLockedUntil);
     faceBoss(entry);
     return entry;
   }
 
-  function applyRemoteAirborne(entry, airborneUntil) {
+  function applyRemoteAirborne(entry, airborneUntil, jumpStrength = 1) {
     if (!entry || entry.id === state.localPlayerId) return;
     const until = Number(airborneUntil) || 0;
     const remaining = until - Date.now();
-
     if (remaining <= 0) {
       entry.remoteJumpStart = 0;
+      entry.remoteJumpStrength = 1;
       entry.y = GROUND_Y;
       return;
     }
 
-    entry.remoteJumpDuration = REMOTE_JUMP_MS;
-    const elapsed = clamp(REMOTE_JUMP_MS - remaining, 0, REMOTE_JUMP_MS);
+    const strength = clamp(Number(jumpStrength) || 1, 0.2, 1);
+    const timing = jumpTiming(strength);
+    entry.remoteJumpDuration = timing.airborneMs;
+    entry.remoteJumpStrength = strength;
+    const elapsed = clamp(timing.airborneMs - remaining, 0, timing.airborneMs);
     entry.remoteJumpStart = performance.now() - elapsed;
   }
 
@@ -335,7 +364,7 @@ export function createRaidBattlefield({
       const entry = ensurePlayer(player);
       if (player.id !== state.localPlayerId) {
         entry.targetX = pctToX(player.x);
-        applyRemoteAirborne(entry, player.airborneUntil);
+        applyRemoteAirborne(entry, player.airborneUntil, player.jumpStrength || 1);
       } else if (state.lastSentX === null) {
         entry.x = pctToX(player.x);
         entry.targetX = entry.x;
@@ -365,26 +394,71 @@ export function createRaidBattlefield({
     if (!entry) return;
     if (id === state.localPlayerId) return;
     entry.targetX = pctToX(xPct);
-    applyRemoteAirborne(entry, airborneUntil);
+    applyRemoteAirborne(entry, airborneUntil, entry.remoteJumpStrength);
     faceBoss(entry);
   }
 
-  function jumpPlayer(id, airborneUntil) {
-    if (id === state.localPlayerId) return;
+  function jumpPlayer(id, airborneUntil, jumpStrength = 1, jumpLockedUntil = 0, jumpFatigue = null) {
     const entry = state.players.get(id);
     if (!entry) return;
-    applyRemoteAirborne(entry, airborneUntil || (Date.now() + REMOTE_JUMP_MS));
+
+    if (Number.isFinite(Number(jumpLockedUntil))) entry.jumpLockedUntil = Number(jumpLockedUntil) || 0;
+    if (jumpFatigue !== null && Number.isFinite(Number(jumpFatigue))) entry.jumpFatigue = Math.max(0, Number(jumpFatigue));
+
+    if (id === state.localPlayerId) return;
+    applyRemoteAirborne(entry, airborneUntil || (Date.now() + REMOTE_JUMP_MS), jumpStrength);
   }
 
   function jumpLocal() {
     const player = localPlayer();
-    if (!player || !player.grounded || player.dazedUntil > Date.now()) return false;
+    const now = Date.now();
+    if (!player || !player.grounded || player.dazedUntil > now) return false;
+    if (now < (player.jumpLockedUntil || 0) || now < (player.jumpReadyAt || 0)) return false;
+
+    if (!player.lastJumpAt || now - player.lastJumpAt > JUMP_CHAIN_WINDOW_MS) {
+      player.jumpFatigue = 0;
+    }
+
+    const fatigueIndex = clamp(Math.round(player.jumpFatigue || 0), 0, JUMP_HEIGHT_STRENGTHS.length - 1);
+    const strength = JUMP_HEIGHT_STRENGTHS[fatigueIndex];
+    const timing = jumpTiming(strength);
+
     player.grounded = false;
-    player.vy = -JUMP_SPEED;
+    player.vy = -JUMP_SPEED * timing.velocityScale;
     player.y -= 2;
-    onJump();
+    player.lastJumpAt = now;
+    player.jumpFatigue = fatigueIndex + 1;
+    player.jumpReadyAt = now + timing.readyMs;
+    player.jumpLockedUntil = player.jumpFatigue >= JUMP_HEIGHT_STRENGTHS.length
+      ? now + JUMP_LOCK_MS
+      : 0;
+
+    onJump({
+      jumpStrength: strength,
+      jumpFatigue: player.jumpFatigue,
+      jumpLockedUntil: player.jumpLockedUntil
+    });
     draw(performance.now());
     return true;
+  }
+
+  function setJumpLock(until) {
+    const player = localPlayer();
+    if (!player) return;
+    player.jumpLockedUntil = Math.max(player.jumpLockedUntil || 0, Number(until) || 0);
+  }
+
+  function getPlayerVisualState(id) {
+    const entry = state.players.get(id);
+    if (!entry) return null;
+    return {
+      x: entry.x,
+      y: entry.y,
+      facing: entry.facing,
+      grounded: entry.grounded,
+      jumpLockedUntil: entry.jumpLockedUntil || 0,
+      jumpFatigue: entry.jumpFatigue || 0
+    };
   }
 
   function setHorizontal(direction, active) {
@@ -508,9 +582,10 @@ export function createRaidBattlefield({
       const t = (now - entry.remoteJumpStart) / entry.remoteJumpDuration;
       if (t >= 1) {
         entry.remoteJumpStart = 0;
+        entry.remoteJumpStrength = 1;
         entry.y = GROUND_Y;
       } else {
-        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 72;
+        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 72 * entry.remoteJumpStrength;
       }
     }
   }
@@ -996,11 +1071,13 @@ export function createRaidBattlefield({
     showTelegraph,
     resolveBossAttack,
     setDazed,
+    setJumpLock,
+    getPlayerVisualState,
     complete,
     setMoveButton(direction, active) {
       if (direction === 'left' || direction === 'right') setHorizontal(direction, Boolean(active));
     },
-    jump() { jumpLocal(); },
+    jump() { return jumpLocal(); },
     resetInput() {
       state.input.left = false;
       state.input.right = false;
