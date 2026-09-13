@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Boss Library - MathRaids Super Admin</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/host.css">
+  <link rel="stylesheet" href="/css/boss-library.css">
+</head>
+<body>
+  <header class="shell site-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span> MathRaids</a>
+    <nav class="nav">
+      <a class="btn" href="/host/">Create raid</a>
+      <button id="admin-logout" class="btn" type="button">Sign out</button>
+    </nav>
+  </header>
+
+  <main class="shell boss-library-shell">
+    <section class="card boss-library-intro">
+      <div class="eyebrow">Super Admin</div>
+      <h1>Boss Library</h1>
+      <p>Manage the canonical boss templates available across MathRaids.</p>
+      <p class="form-hint">This is private platform tooling. A separate encounter builder can later let hosts create their own raids without giving them access to this library.</p>
+    </section>
+
+    <section class="boss-library-layout">
+      <form id="boss-template-form" class="card boss-template-form">
+        <div class="eyebrow">Add boss</div>
+        <h2>New boss template</h2>
+
+        <div class="form-row">
+          <label for="boss-name">Boss name</label>
+          <input id="boss-name" name="name" maxlength="60" required placeholder="e.g. Reactor Rex">
+        </div>
+
+        <div class="form-row">
+          <label for="boss-encounter">Encounter name</label>
+          <input id="boss-encounter" name="encounter" maxlength="80" placeholder="e.g. Power Plant Panic">
+        </div>
+
+        <div class="form-row">
+          <label for="boss-idle">Idle / front sprite</label>
+          <input id="boss-idle" name="idle" type="file" accept="image/png,image/jpeg,image/webp" required>
+          <div class="form-hint">Shown while standing, charging, taking hits and sinking on defeat.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="boss-attack">Attack / side sprite</label>
+          <input id="boss-attack" name="attack" type="file" accept="image/png,image/jpeg,image/webp" required>
+        </div>
+
+        <div class="form-row">
+          <label for="boss-attack-faces">Uploaded attack sprite faces</label>
+          <select id="boss-attack-faces" name="attackFaces">
+            <option value="left" selected>Left</option>
+            <option value="right">Right</option>
+          </select>
+          <div class="form-hint">MathRaids mirrors the sprite automatically for attacks in the opposite direction.</div>
+        </div>
+
+        <div class="boss-preview-grid" aria-label="Boss artwork preview">
+          <div class="boss-preview-card">
+            <span>Idle</span>
+            <img id="idle-preview" alt="Idle boss preview">
+          </div>
+          <div class="boss-preview-card">
+            <span>Attack</span>
+            <img id="attack-preview" alt="Attack boss preview">
+          </div>
+        </div>
+
+        <div id="boss-template-message" aria-live="polite"></div>
+        <button id="save-boss-template" class="btn btn-primary btn-lg" type="submit">Save boss template</button>
+      </form>
+
+      <section class="card boss-library-list-card">
+        <div class="boss-library-list-header">
+          <div>
+            <div class="eyebrow">Published bosses</div>
+            <h2>Platform library</h2>
+          </div>
+          <button id="refresh-bosses" class="btn" type="button">Refresh</button>
+        </div>
+        <div id="boss-library-list" class="boss-library-grid" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="/js/boss-library.js"></script>
+</body>
+</html>
