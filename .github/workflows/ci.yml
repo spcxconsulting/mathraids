@@ -21,6 +21,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check src/index.js
+          node --check src/admin-auth.js
           node --check src/bosses.js
           node --check src/boss-library.js
           node --check src/raid-room.js
@@ -32,6 +33,7 @@ jobs:
           node --check src/raid-room-impact.js
           node --check src/raid-room-library.js
           node --check src/questions.js
+          node --check public/js/admin-login.js
           node --check public/js/host.js
           node --check public/js/boss-library.js
           node --check public/js/host-raid.js
