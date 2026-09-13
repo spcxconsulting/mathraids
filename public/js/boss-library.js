@@ -1,4 +1,6 @@
 const form = document.querySelector('#boss-template-form');
+const formTitle = form.querySelector('h2');
+const formEyebrow = form.querySelector('.eyebrow');
 const message = document.querySelector('#boss-template-message');
 const saveButton = document.querySelector('#save-boss-template');
 const list = document.querySelector('#boss-library-list');
@@ -25,9 +27,17 @@ const bossWidthInput = document.querySelector('#boss-width');
 const bossHeightInput = document.querySelector('#boss-height');
 const bossTopInput = document.querySelector('#boss-top');
 
+const cancelEditButton = document.createElement('button');
+cancelEditButton.className = 'btn';
+cancelEditButton.type = 'button';
+cancelEditButton.textContent = 'Cancel editing';
+cancelEditButton.hidden = true;
+saveButton.insertAdjacentElement('afterend', cancelEditButton);
+
 const previewUrls = new Map();
 let attackSequence = 0;
 let activeAttackId = null;
+let editingEncounterId = null;
 
 bindPreview(backgroundInput, backgroundPreview, 'background');
 bindPreview(foregroundInput, foregroundPreview, 'foreground');
@@ -43,9 +53,14 @@ form.addEventListener('submit', saveEncounter);
 logoutButton?.addEventListener('click', signOut);
 addAttackButton.addEventListener('click', () => addAttack());
 previewNeutralButton.addEventListener('click', showNeutralPreview);
+cancelEditButton.addEventListener('click', () => {
+  resetBuilder();
+  message.innerHTML = '<div class="notice">Editing cancelled. Ready to create a new encounter.</div>';
+});
 
 addAttack({ name: 'Meteor Blast', type: 'fireball', mechanic: 'left_slam', originX: 50, originY: 24, size: 34 });
 updateSceneBossPlacement();
+updateBuilderModeUi();
 boot();
 
 async function boot() {
@@ -67,7 +82,9 @@ function bindPreview(input, image, key) {
     releasePreviewUrl(key);
     const file = input.files?.[0];
     if (!file) {
-      image.removeAttribute('src');
+      const existing = input.dataset.existingSrc || '';
+      if (existing) image.src = existing;
+      else image.removeAttribute('src');
       updateSceneEmptyState();
       return;
     }
@@ -82,6 +99,10 @@ function releasePreviewUrl(key) {
   const current = previewUrls.get(key);
   if (current) URL.revokeObjectURL(current);
   previewUrls.delete(key);
+}
+
+function releaseAllPreviewUrls() {
+  for (const key of [...previewUrls.keys()]) releasePreviewUrl(key);
 }
 
 function updateSceneEmptyState() {
@@ -125,10 +146,16 @@ function attackSizeCopy(type) {
   };
 }
 
+function attackSizeFromDefinition(attack) {
+  if (attack?.type === 'beam') return Number(attack.geometry?.beamWidth) || 48;
+  return Number(attack?.geometry?.radius) || defaultSizeForType(attack?.type);
+}
+
 function addAttack(initial = {}) {
   const fragment = attackTemplate.content.cloneNode(true);
   const card = fragment.querySelector('.boss-attack-card');
   card.dataset.attackId = `attack-${++attackSequence}`;
+  card.dataset.existingImage = initial.imageUrl || '';
 
   const fields = getAttackFields(card);
   fields.name.value = initial.name || `Attack ${attacksHost.children.length + 1}`;
@@ -142,15 +169,19 @@ function addAttack(initial = {}) {
   fields.critDamage.value = initial.critDamage ?? 40;
   fields.warningMs.value = initial.warningMs ?? 1650;
   fields.travelMs.value = initial.travelMs ?? 720;
+  fields.image.required = !card.dataset.existingImage;
   updateAttackTypeFields(card);
+
+  const preview = card.querySelector('[data-preview="attack"]');
+  if (card.dataset.existingImage) preview.src = card.dataset.existingImage;
 
   fields.image.addEventListener('change', () => {
     const key = `${card.dataset.attackId}:preview`;
     releasePreviewUrl(key);
     const file = fields.image.files?.[0];
-    const preview = card.querySelector('[data-preview="attack"]');
     if (!file) {
-      preview.removeAttribute('src');
+      if (card.dataset.existingImage) preview.src = card.dataset.existingImage;
+      else preview.removeAttribute('src');
       if (activeAttackId === card.dataset.attackId) updateActiveAttackPreview();
       return;
     }
@@ -337,16 +368,124 @@ function renderBosses(bosses) {
     card.append(art, copy);
 
     if (boss.custom) {
+      const actions = document.createElement('div');
+      Object.assign(actions.style, {
+        display: 'flex',
+        gap: '6px',
+        padding: '0 12px 12px'
+      });
+
+      const edit = document.createElement('button');
+      edit.className = 'btn';
+      edit.type = 'button';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => editBoss(boss, edit));
+
       const remove = document.createElement('button');
-      remove.className = 'btn boss-delete';
+      remove.className = 'btn';
       remove.type = 'button';
       remove.textContent = 'Delete';
       remove.addEventListener('click', () => deleteBoss(boss, remove));
-      card.append(remove);
+
+      actions.append(edit, remove);
+      card.append(actions);
     }
 
     list.append(card);
   }
+}
+
+async function editBoss(boss, button) {
+  button.disabled = true;
+  message.innerHTML = '';
+  try {
+    const response = await fetch(`/api/bosses/${encodeURIComponent(boss.id)}`, { cache: 'no-store' });
+    const data = await response.json();
+    if (response.status === 403) {
+      window.location.replace('/admin/');
+      return;
+    }
+    if (!response.ok) throw new Error(data.error || 'Could not load encounter for editing');
+    populateBuilder(data.boss);
+    message.innerHTML = `<div class="notice success">Editing ${escapeHtml(data.boss.encounter || data.boss.name)}. Existing images will be kept unless you upload replacements.</div>`;
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function setExistingAsset(input, preview, src = '') {
+  input.value = '';
+  input.dataset.existingSrc = src || '';
+  input.required = false;
+  if (preview) {
+    if (src) preview.src = src;
+    else preview.removeAttribute('src');
+  }
+}
+
+function populateBuilder(definition) {
+  releaseAllPreviewUrls();
+  form.reset();
+  editingEncounterId = definition.id;
+  attackSequence = 0;
+  activeAttackId = null;
+
+  document.querySelector('#boss-name').value = definition.name || '';
+  document.querySelector('#boss-encounter').value = definition.encounter || '';
+  document.querySelector('#canvas-width').value = definition.canvas?.width || 640;
+  document.querySelector('#canvas-height').value = definition.canvas?.height || 360;
+  bossWidthInput.value = definition.presentation?.width || 560;
+  bossHeightInput.value = definition.presentation?.height || 490;
+  bossTopInput.value = definition.presentation?.top ?? -92;
+  document.querySelector('#enrage-seconds').value = Math.round((Number(definition.enrage?.timerMs) || 0) / 1000);
+  document.querySelector('#enrage-multiplier').value = Number(definition.enrage?.damageMultiplier) || 1.5;
+
+  setExistingAsset(backgroundInput, backgroundPreview, definition.art?.backgroundBack || '');
+  setExistingAsset(foregroundInput, foregroundPreview, definition.art?.backgroundFront || '');
+  setExistingAsset(neutralInput, neutralPreview, definition.art?.bossNeutral || definition.art?.bossIdle || definition.art?.boss || '');
+  setExistingAsset(deathInput, null, definition.art?.bossDeath || definition.art?.bossNeutral || definition.art?.bossIdle || definition.art?.boss || '');
+
+  attacksHost.replaceChildren();
+  const definitions = Array.isArray(definition.attackDefinitions) && definition.attackDefinitions.length
+    ? definition.attackDefinitions
+    : (definition.attacks || ['shockwave']).map((mechanic, index) => ({
+        id: `attack-${index + 1}`,
+        name: `Attack ${index + 1}`,
+        type: 'fireball',
+        faces: definition.art?.attackFaces || 'left',
+        mechanic,
+        origin: { x: 50, y: 24 },
+        geometry: { radius: 34 },
+        baseDamage: 24,
+        critDamage: 40,
+        warningMs: definition.defaults?.warningMs || 1650,
+        travelMs: 720,
+        image: definition.art?.bossAttack || definition.art?.bossNeutral || definition.art?.bossIdle || definition.art?.boss || ''
+      }));
+
+  for (const attack of definitions) {
+    addAttack({
+      name: attack.name,
+      type: attack.type,
+      faces: attack.faces,
+      mechanic: attack.mechanic,
+      originX: attack.origin?.x ?? 50,
+      originY: attack.origin?.y ?? 24,
+      size: attackSizeFromDefinition(attack),
+      baseDamage: attack.baseDamage,
+      critDamage: attack.critDamage,
+      warningMs: attack.warningMs,
+      travelMs: attack.travelMs,
+      imageUrl: attack.image || ''
+    });
+  }
+
+  updateSceneBossPlacement();
+  updateSceneEmptyState();
+  updateBuilderModeUi(definition);
 }
 
 function collectAttacks() {
@@ -365,6 +504,7 @@ function collectAttacks() {
       critDamage: Number(fields.critDamage.value),
       warningMs: Number(fields.warningMs.value),
       travelMs: Number(fields.travelMs.value),
+      existingImage: card.dataset.existingImage || '',
       file: fields.image.files?.[0] || null
     };
   });
@@ -376,13 +516,13 @@ async function saveEncounter(event) {
   if (!form.reportValidity()) return;
 
   const attacks = collectAttacks();
-  if (!attacks.length || attacks.some((attack) => !attack.file)) {
+  if (!attacks.length || attacks.some((attack) => !attack.file && !attack.existingImage)) {
     message.innerHTML = '<div class="notice error">Every boss attack needs an attack image.</div>';
     return;
   }
 
   saveButton.disabled = true;
-  saveButton.textContent = 'Uploading encounter...';
+  saveButton.textContent = editingEncounterId ? 'Saving changes...' : 'Uploading encounter...';
 
   const payload = new FormData();
   payload.append('name', document.querySelector('#boss-name').value.trim());
@@ -394,19 +534,23 @@ async function saveEncounter(event) {
   payload.append('bossTop', bossTopInput.value);
   payload.append('enrageSeconds', document.querySelector('#enrage-seconds').value);
   payload.append('enrageDamageMultiplier', document.querySelector('#enrage-multiplier').value);
-  payload.append('background', backgroundInput.files[0]);
+  if (backgroundInput.files?.[0]) payload.append('background', backgroundInput.files[0]);
   if (foregroundInput.files?.[0]) payload.append('foreground', foregroundInput.files[0]);
-  payload.append('idle', neutralInput.files[0]);
-  payload.append('death', deathInput.files[0]);
+  if (neutralInput.files?.[0]) payload.append('idle', neutralInput.files[0]);
+  if (deathInput.files?.[0]) payload.append('death', deathInput.files[0]);
 
   payload.append('attackDefinitions', JSON.stringify(attacks.map(({ file, ...attack }) => attack)));
-  attacks.forEach((attack, index) => payload.append(`attackImage_${index}`, attack.file));
+  attacks.forEach((attack, index) => {
+    if (attack.file) payload.append(`attackImage_${index}`, attack.file);
+  });
+
+  const endpoint = editingEncounterId
+    ? `/api/bosses/${encodeURIComponent(editingEncounterId)}`
+    : '/api/bosses';
+  const method = editingEncounterId ? 'PUT' : 'POST';
 
   try {
-    const response = await fetch('/api/bosses', {
-      method: 'POST',
-      body: payload
-    });
+    const response = await fetch(endpoint, { method, body: payload });
     const data = await response.json();
     if (response.status === 403) {
       window.location.replace('/admin/');
@@ -414,19 +558,50 @@ async function saveEncounter(event) {
     }
     if (!response.ok) throw new Error(data.error || 'Could not save encounter');
 
-    message.innerHTML = `<div class="notice success">${escapeHtml(data.boss.encounter || data.boss.name)} is now available when creating a raid.</div>`;
-    resetBuilder();
+    const label = data.boss.encounter || data.boss.name;
+    message.innerHTML = `<div class="notice success">${escapeHtml(label)} ${method === 'PUT' ? 'was updated.' : 'is now available when creating a raid.'}</div>`;
+    resetBuilder({ keepMessage: true });
     await loadBosses();
   } catch (error) {
     message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = 'Save encounter';
+    updateBuilderModeUi();
   }
 }
 
-function resetBuilder() {
+function clearExistingAssetState() {
+  for (const input of [backgroundInput, foregroundInput, neutralInput, deathInput]) {
+    input.dataset.existingSrc = '';
+  }
+}
+
+function updateBuilderModeUi(definition = null) {
+  const editing = Boolean(editingEncounterId);
+  formEyebrow.textContent = editing ? 'Editing encounter definition v3' : 'Encounter definition v3';
+  formTitle.textContent = editing
+    ? `Edit ${definition?.encounter || document.querySelector('#boss-encounter').value || 'encounter'}`
+    : 'New boss encounter';
+  saveButton.textContent = editing ? 'Save encounter changes' : 'Save encounter';
+  cancelEditButton.hidden = !editing;
+  backgroundInput.required = !editing;
+  neutralInput.required = !editing;
+  deathInput.required = !editing;
+
+  for (const card of attacksHost.querySelectorAll('.boss-attack-card')) {
+    const fields = getAttackFields(card);
+    fields.image.required = !card.dataset.existingImage;
+  }
+}
+
+function resetBuilder({ keepMessage = false } = {}) {
+  releaseAllPreviewUrls();
   form.reset();
+  editingEncounterId = null;
+  attackSequence = 0;
+  activeAttackId = null;
+  clearExistingAssetState();
+
   document.querySelector('#canvas-width').value = 640;
   document.querySelector('#canvas-height').value = 360;
   bossWidthInput.value = 560;
@@ -435,13 +610,13 @@ function resetBuilder() {
   document.querySelector('#enrage-seconds').value = 120;
   document.querySelector('#enrage-multiplier').value = 1.5;
 
-  for (const key of [...previewUrls.keys()]) releasePreviewUrl(key);
   [backgroundPreview, foregroundPreview, neutralPreview, attackPosePreview].forEach((image) => image.removeAttribute('src'));
   attacksHost.replaceChildren();
-  activeAttackId = null;
   addAttack({ name: 'Meteor Blast', type: 'fireball', mechanic: 'left_slam', originX: 50, originY: 24, size: 34 });
   updateSceneBossPlacement();
   updateSceneEmptyState();
+  updateBuilderModeUi();
+  if (!keepMessage) message.innerHTML = '';
 }
 
 async function deleteBoss(boss, button) {
@@ -455,6 +630,7 @@ async function deleteBoss(boss, button) {
       return;
     }
     if (!response.ok) throw new Error(data.error || 'Could not delete encounter');
+    if (editingEncounterId === boss.id) resetBuilder();
     await loadBosses();
   } catch (error) {
     message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
