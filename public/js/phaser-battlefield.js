@@ -1,5 +1,5 @@
 // Backwards-compatible module name while the rest of the client still imports
 // phaser-battlefield.js. The live renderer is a lightweight high-DPI Canvas2D
-// engine using SVG source artwork, reusable boss presentation states, and fully
-// local player movement.
-export { createRaidBattlefield } from './vector-battlefield-reusable.js';
+// engine using SVG source artwork, reusable boss presentation states, local
+// player movement, and an optional Hardcore health/knockout layer.
+export { createRaidBattlefield } from './hardcore-battlefield.js';
