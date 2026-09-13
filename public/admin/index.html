@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Super Admin - MathRaids</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/host.css">
+</head>
+<body>
+  <header class="shell site-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span> MathRaids</a>
+    <nav class="nav"><a class="btn" href="/host/">Host a raid</a></nav>
+  </header>
+
+  <main class="shell">
+    <section class="card form-card" style="max-width:560px;margin-inline:auto">
+      <div class="eyebrow">Private tools</div>
+      <h1>Super Admin</h1>
+      <p>This area is for MathRaids platform administration only.</p>
+
+      <form id="admin-login-form">
+        <div class="form-row">
+          <label for="admin-password">Admin password</label>
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required autofocus>
+        </div>
+        <div id="admin-login-message" aria-live="polite"></div>
+        <button id="admin-login-button" class="btn btn-primary btn-lg" type="submit">Sign in</button>
+      </form>
+
+      <p id="admin-local-hint" class="form-hint" hidden>Local development password: <code>mathraids-local-admin</code></p>
+    </section>
+  </main>
+
+  <script type="module" src="/js/admin-login.js"></script>
+</body>
+</html>
