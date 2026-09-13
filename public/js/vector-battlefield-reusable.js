@@ -16,7 +16,7 @@ const BOSS_X = WIDTH / 2;
 const JUMP_CHAIN_WINDOW_MS = 2200;
 const JUMP_LOCK_MS = 5000;
 const JUMP_BASE_READY_MS = 780;
-const JUMP_HEIGHT_STRENGTHS = [1, 0.92, 0.82, 0.68, 0.52, 0.36];
+const JUMP_HEIGHT_STRENGTHS = [1, 0.5, 0.25];
 
 const PLAYER_W = 24;
 const PLAYER_H = 30;
@@ -114,6 +114,7 @@ export function createRaidBattlefield({
     lastFrameAt: performance.now(),
     lastPositionSentAt: 0,
     lastSentX: null,
+    jumpFatigueEnabled: true,
     telegraph: null,
     complete: null,
     completedAt: 0,
@@ -343,6 +344,15 @@ export function createRaidBattlefield({
     if (!serverState) return;
     state.mode = serverState.status === 'lobby' ? 'lobby' : 'raid';
     state.remoteLabelsEnabled = (serverState.players?.length || 0) <= LABEL_LIMIT;
+    state.jumpFatigueEnabled = serverState.jumpFatigue?.enabled !== false;
+
+    if (!state.jumpFatigueEnabled) {
+      const local = localPlayer();
+      if (local) {
+        local.jumpFatigue = 0;
+        local.jumpLockedUntil = 0;
+      }
+    }
 
     if (serverState.boss) {
       state.bossPresentation.configure({
@@ -413,6 +423,20 @@ export function createRaidBattlefield({
     const player = localPlayer();
     const now = Date.now();
     if (!player || !player.grounded || player.dazedUntil > now) return false;
+
+    if (!state.jumpFatigueEnabled) {
+      const timing = jumpTiming(1);
+      player.grounded = false;
+      player.vy = -JUMP_SPEED;
+      player.y -= 2;
+      player.jumpFatigue = 0;
+      player.jumpLockedUntil = 0;
+      player.jumpReadyAt = now + timing.readyMs;
+      onJump({ jumpStrength: 1, jumpFatigue: 0, jumpLockedUntil: 0 });
+      draw(performance.now());
+      return true;
+    }
+
     if (now < (player.jumpLockedUntil || 0) || now < (player.jumpReadyAt || 0)) return false;
 
     if (!player.lastJumpAt || now - player.lastJumpAt > JUMP_CHAIN_WINDOW_MS) {
@@ -444,7 +468,7 @@ export function createRaidBattlefield({
 
   function setJumpLock(until) {
     const player = localPlayer();
-    if (!player) return;
+    if (!player || !state.jumpFatigueEnabled) return;
     player.jumpLockedUntil = Math.max(player.jumpLockedUntil || 0, Number(until) || 0);
   }
 
