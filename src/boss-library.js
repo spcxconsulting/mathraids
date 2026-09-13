@@ -50,14 +50,6 @@ export function bossLibraryAvailable(env) {
   return Boolean(env.BOSS_ASSETS);
 }
 
-export function bossWriteAuthorised(request, env) {
-  const url = new URL(request.url);
-  if (['localhost', '127.0.0.1'].includes(url.hostname)) return true;
-  const configured = String(env.BOSS_LIBRARY_KEY || '');
-  if (!configured) return false;
-  return request.headers.get('x-boss-library-key') === configured;
-}
-
 export async function listBosses(env) {
   const builtIns = Object.values(BOSS_DEFINITIONS).map(publicSummary);
   if (!env.BOSS_ASSETS) return builtIns;
