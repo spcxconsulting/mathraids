@@ -2,12 +2,12 @@ import { BossPresentation } from './boss-presentation.js';
 
 const WIDTH = 640;
 const HEIGHT = 360;
-const GROUND_Y = 312;
+const GROUND_Y = 338;
 const MIN_X = 28;
 const MAX_X = WIDTH - 28;
 const RUN_SPEED = 270;
-const JUMP_SPEED = 520;
-const GRAVITY = 1500;
+const JUMP_SPEED = 280;
+const GRAVITY = 860;
 const POSITION_SEND_MS = 100;
 const REMOTE_LERP = 18;
 const REMOTE_JUMP_MS = 650;
@@ -609,7 +609,7 @@ export function createRaidBattlefield({
         entry.remoteJumpStrength = 1;
         entry.y = GROUND_Y;
       } else {
-        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 72 * entry.remoteJumpStrength;
+        entry.y = GROUND_Y - Math.sin(Math.PI * t) * 36 * entry.remoteJumpStrength;
       }
     }
   }
@@ -745,7 +745,7 @@ export function createRaidBattlefield({
     ctx.globalAlpha = 0.2;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(x, GROUND_Y + 3, Math.max(4, 9 - jumpHeight / 12), 2.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, GROUND_Y + 3, Math.max(4, 9 - jumpHeight / 8), 2.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -764,12 +764,12 @@ export function createRaidBattlefield({
     drawRaster(cache, x - PLAYER_W / 2, y - PLAYER_H, PLAYER_W, PLAYER_H, entry.facing === 'left', entry.dazedUntil > Date.now() ? 0.5 : 1);
 
     if (isLocal || state.remoteLabelsEnabled) {
-      ctx.font = '600 9px system-ui, sans-serif';
+      ctx.font = '600 7px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = isLocal ? '#a7ff9e' : '#eef6ff';
       ctx.strokeStyle = 'rgba(5,12,20,.9)';
-      ctx.lineWidth = 2.5;
-      const labelY = Math.min(354, y + 14);
+      ctx.lineWidth = 1.75;
+      const labelY = Math.min(348, y + 10);
       const label = isLocal ? `${entry.name} (you)` : entry.name;
       ctx.strokeText(label, x, labelY);
       ctx.fillText(label, x, labelY);
