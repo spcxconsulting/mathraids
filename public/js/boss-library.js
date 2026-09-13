@@ -151,12 +151,60 @@ function attackSizeFromDefinition(attack) {
   return Number(attack?.geometry?.radius) || defaultSizeForType(attack?.type);
 }
 
+function normaliseSweepDirection(value) {
+  return value === 'right_to_left' ? 'right_to_left' : 'left_to_right';
+}
+
+function ensureBeamSweepField(card) {
+  let row = card.querySelector('[data-beam-sweep-row]');
+  if (row) return row.querySelector('[data-field="sweepDirection"]');
+
+  row = document.createElement('div');
+  row.className = 'form-row';
+  row.dataset.beamSweepRow = '';
+  row.innerHTML = `
+    <label>Beam sweep direction</label>
+    <select data-field="sweepDirection">
+      <option value="left_to_right">Left to right</option>
+      <option value="right_to_left">Right to left</option>
+    </select>
+    <div class="form-hint">Direction the beam sweeps across the battlefield after it starts firing.</div>
+  `;
+
+  const originBox = card.querySelector('.attack-origin-fields');
+  originBox?.append(row);
+  return row.querySelector('[data-field="sweepDirection"]');
+}
+
+function ensureBeamSweepIndicator() {
+  let indicator = attackShapePreview.querySelector('[data-beam-sweep-indicator]');
+  if (indicator) return indicator;
+
+  indicator = document.createElement('div');
+  indicator.dataset.beamSweepIndicator = '';
+  Object.assign(indicator.style, {
+    position: 'absolute',
+    zIndex: '8',
+    padding: '4px 8px',
+    borderRadius: '999px',
+    background: 'rgba(3,14,24,.82)',
+    border: '1px solid rgba(124,239,255,.75)',
+    color: '#c9f8ff',
+    font: '800 11px system-ui, sans-serif',
+    letterSpacing: '.04em',
+    boxShadow: '0 0 12px rgba(89,222,255,.28)'
+  });
+  attackShapePreview.append(indicator);
+  return indicator;
+}
+
 function addAttack(initial = {}) {
   const fragment = attackTemplate.content.cloneNode(true);
   const card = fragment.querySelector('.boss-attack-card');
   card.dataset.attackId = `attack-${++attackSequence}`;
   card.dataset.existingImage = initial.imageUrl || '';
 
+  const sweepField = ensureBeamSweepField(card);
   const fields = getAttackFields(card);
   fields.name.value = initial.name || `Attack ${attacksHost.children.length + 1}`;
   fields.type.value = initial.type || 'fireball';
@@ -165,6 +213,7 @@ function addAttack(initial = {}) {
   fields.originX.value = initial.originX ?? 50;
   fields.originY.value = initial.originY ?? 24;
   fields.size.value = initial.size ?? defaultSizeForType(fields.type.value);
+  fields.sweepDirection.value = normaliseSweepDirection(initial.sweepDirection);
   fields.baseDamage.value = initial.baseDamage ?? 24;
   fields.critDamage.value = initial.critDamage ?? 40;
   fields.warningMs.value = initial.warningMs ?? 1650;
@@ -196,11 +245,11 @@ function addAttack(initial = {}) {
     if (activeAttackId === card.dataset.attackId) updateActiveAttackPreview();
   });
 
-  for (const input of [fields.name, fields.faces, fields.originX, fields.originY, fields.size]) {
-    input.addEventListener('input', () => {
+  for (const input of [fields.name, fields.faces, fields.originX, fields.originY, fields.size, sweepField]) {
+    input?.addEventListener('input', () => {
       if (activeAttackId === card.dataset.attackId) updateActiveAttackPreview();
     });
-    input.addEventListener('change', () => {
+    input?.addEventListener('change', () => {
       if (activeAttackId === card.dataset.attackId) updateActiveAttackPreview();
     });
   }
@@ -240,6 +289,7 @@ function getAttackFields(card) {
     originX: card.querySelector('[data-field="originX"]'),
     originY: card.querySelector('[data-field="originY"]'),
     size: card.querySelector('[data-field="size"]'),
+    sweepDirection: card.querySelector('[data-field="sweepDirection"]'),
     baseDamage: card.querySelector('[data-field="baseDamage"]'),
     critDamage: card.querySelector('[data-field="critDamage"]'),
     warningMs: card.querySelector('[data-field="warningMs"]'),
@@ -252,6 +302,8 @@ function updateAttackTypeFields(card) {
   const copy = attackSizeCopy(fields.type.value);
   card.querySelector('[data-size-label]').textContent = copy.label;
   card.querySelector('[data-size-hint]').textContent = copy.hint;
+  const sweepRow = card.querySelector('[data-beam-sweep-row]');
+  if (sweepRow) sweepRow.hidden = fields.type.value !== 'beam';
 }
 
 function renumberAttacks() {
@@ -281,6 +333,8 @@ function showNeutralPreview() {
   attackPosePreview.removeAttribute('src');
   neutralPreview.classList.remove('suppressed');
   attackShapePreview.classList.remove('active', 'beam', 'fireball', 'smash');
+  const indicator = attackShapePreview.querySelector('[data-beam-sweep-indicator]');
+  if (indicator) indicator.hidden = true;
   previewAttackLabel.textContent = 'Neutral pose';
   attackPreviewReadout.textContent = 'Choose an attack to preview its origin and size.';
 }
@@ -297,6 +351,7 @@ function updateActiveAttackPreview() {
   const originX = clampNumber(fields.originX.value, 0, 100, 50);
   const originY = clampNumber(fields.originY.value, 0, 100, 24);
   const size = clampNumber(fields.size.value, 4, 640, defaultSizeForType(type));
+  const sweepDirection = normaliseSweepDirection(fields.sweepDirection?.value);
   const localPreview = card.querySelector('[data-preview="attack"]');
 
   previewAttackLabel.textContent = fields.name.value.trim() || card.querySelector('.boss-attack-number').textContent;
@@ -314,8 +369,20 @@ function updateActiveAttackPreview() {
   attackShapePreview.style.setProperty('--smash-w', `${(size * 2 / 640) * 100}%`);
   attackShapePreview.style.setProperty('--smash-h', `${(size * 2 / 360) * 100}%`);
 
+  const indicator = ensureBeamSweepIndicator();
+  indicator.hidden = type !== 'beam';
+  if (type === 'beam') {
+    indicator.textContent = sweepDirection === 'right_to_left' ? 'R → L  ←' : '→  L → R';
+    indicator.style.top = `${Math.min(88, Math.max(8, originY + 6))}%`;
+    indicator.style.left = sweepDirection === 'right_to_left' ? '12px' : 'auto';
+    indicator.style.right = sweepDirection === 'right_to_left' ? 'auto' : '12px';
+  }
+
   const sizeName = type === 'beam' ? 'width' : 'radius';
-  attackPreviewReadout.textContent = `${typeLabel(type)} · origin ${Math.round(originX)}%, ${Math.round(originY)}% · ${sizeName} ${Math.round(size)}px`;
+  const sweepCopy = type === 'beam'
+    ? ` · sweep ${sweepDirection === 'right_to_left' ? 'right → left' : 'left → right'}`
+    : '';
+  attackPreviewReadout.textContent = `${typeLabel(type)} · origin ${Math.round(originX)}%, ${Math.round(originY)}% · ${sizeName} ${Math.round(size)}px${sweepCopy}`;
   updateSceneEmptyState();
 }
 
@@ -369,11 +436,7 @@ function renderBosses(bosses) {
 
     if (boss.custom) {
       const actions = document.createElement('div');
-      Object.assign(actions.style, {
-        display: 'flex',
-        gap: '6px',
-        padding: '0 12px 12px'
-      });
+      Object.assign(actions.style, { display: 'flex', gap: '6px', padding: '0 12px 12px' });
 
       const edit = document.createElement('button');
       edit.className = 'btn';
@@ -475,6 +538,7 @@ function populateBuilder(definition) {
       originX: attack.origin?.x ?? 50,
       originY: attack.origin?.y ?? 24,
       size: attackSizeFromDefinition(attack),
+      sweepDirection: attack.geometry?.sweepDirection || attack.sweepDirection || 'left_to_right',
       baseDamage: attack.baseDamage,
       critDamage: attack.critDamage,
       warningMs: attack.warningMs,
@@ -500,6 +564,9 @@ function collectAttacks() {
       originX: Number(fields.originX.value),
       originY: Number(fields.originY.value),
       size: Number(fields.size.value),
+      sweepDirection: fields.type.value === 'beam'
+        ? normaliseSweepDirection(fields.sweepDirection?.value)
+        : null,
       baseDamage: Number(fields.baseDamage.value),
       critDamage: Number(fields.critDamage.value),
       warningMs: Number(fields.warningMs.value),
@@ -578,7 +645,7 @@ function clearExistingAssetState() {
 
 function updateBuilderModeUi(definition = null) {
   const editing = Boolean(editingEncounterId);
-  formEyebrow.textContent = editing ? 'Editing encounter definition v3' : 'Encounter definition v3';
+  formEyebrow.textContent = editing ? 'Editing encounter definition v4' : 'Encounter definition v4';
   formTitle.textContent = editing
     ? `Edit ${definition?.encounter || document.querySelector('#boss-encounter').value || 'encounter'}`
     : 'New boss encounter';
