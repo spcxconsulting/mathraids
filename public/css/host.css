@@ -90,6 +90,55 @@
   font-weight: 800;
 }
 
+.custom-rules-panel {
+  margin: 18px 0 24px;
+  padding: 20px;
+  border: 1px solid rgba(201,155,255,.3);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(201,155,255,.08), rgba(11,22,38,.8));
+}
+
+.custom-rules-panel[hidden] {
+  display: none;
+}
+
+.custom-rules-panel h2 {
+  margin-bottom: 6px;
+}
+
+.custom-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+  cursor: pointer;
+}
+
+.custom-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #c99bff;
+}
+
+.custom-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.custom-toggle small {
+  color: #9fb0c4;
+  line-height: 1.4;
+}
+
+.custom-toggle:has(input:disabled) {
+  opacity: .5;
+  cursor: default;
+}
+
 @media (max-width: 860px) {
   .mode-choice-grid { grid-template-columns: 1fr; }
   .mode-choice-card { min-height: 0; }
