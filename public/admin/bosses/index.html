@@ -27,7 +27,7 @@
 
     <section class="boss-library-layout encounter-builder-layout">
       <form id="boss-template-form" class="card boss-template-form encounter-form">
-        <div class="eyebrow">Encounter definition v2</div>
+        <div class="eyebrow">Encounter definition v3</div>
         <h2>New boss encounter</h2>
 
         <fieldset class="encounter-section">
@@ -104,7 +104,7 @@
           <div class="encounter-section-heading">
             <div>
               <legend>Boss attacks</legend>
-              <div class="form-hint">Every attack has its own pose, visual style, damage and dodge mechanic.</div>
+              <div class="form-hint">Every attack has its own pose, origin, visual footprint, damage and dodge mechanic. Click Preview on an attack to inspect it in the live encounter preview.</div>
             </div>
             <button id="add-boss-attack" class="btn" type="button">+ Add another boss attack</button>
           </div>
@@ -138,38 +138,62 @@
           </div>
         </fieldset>
 
-        <fieldset class="encounter-section">
-          <legend>Scene preview</legend>
-          <div class="encounter-scene-preview" id="encounter-scene-preview" aria-label="Encounter scene preview">
-            <img id="background-preview" class="scene-layer background" alt="Background preview">
-            <img id="neutral-preview" class="scene-layer boss" alt="Boss neutral preview">
-            <img id="foreground-preview" class="scene-layer foreground" alt="Foreground preview">
-            <div class="scene-preview-empty">Upload the scene and boss artwork to preview the layer order.</div>
-          </div>
-        </fieldset>
-
         <div id="boss-template-message" aria-live="polite"></div>
         <button id="save-boss-template" class="btn btn-primary btn-lg" type="submit">Save encounter</button>
       </form>
 
-      <section class="card boss-library-list-card">
-        <div class="boss-library-list-header">
-          <div>
-            <div class="eyebrow">Published encounters</div>
-            <h2>Platform library</h2>
+      <aside class="encounter-builder-sidebar">
+        <section class="card encounter-live-preview-card">
+          <div class="boss-library-list-header">
+            <div>
+              <div class="eyebrow">Live encounter preview</div>
+              <h2 id="preview-attack-label">Neutral pose</h2>
+            </div>
+            <button id="preview-neutral" class="btn" type="button">Neutral</button>
           </div>
-          <button id="refresh-bosses" class="btn" type="button">Refresh</button>
-        </div>
-        <div id="boss-library-list" class="boss-library-grid" aria-live="polite"></div>
-      </section>
+
+          <div class="encounter-scene-preview" id="encounter-scene-preview" aria-label="Encounter scene preview">
+            <img id="background-preview" class="scene-layer background" alt="Background preview">
+            <img id="neutral-preview" class="scene-layer boss" alt="Boss neutral preview">
+            <img id="attack-pose-preview" class="scene-layer boss attack-pose" alt="Boss attack pose preview">
+            <img id="foreground-preview" class="scene-layer foreground" alt="Foreground preview">
+
+            <div id="attack-shape-preview" class="attack-shape-preview" aria-hidden="true">
+              <div class="attack-origin-marker"><span></span></div>
+              <div class="attack-fireball-shape"></div>
+              <div class="attack-beam-shape"></div>
+              <div class="attack-smash-shape"></div>
+            </div>
+
+            <div class="scene-preview-empty">Upload the scene and boss artwork to preview the encounter.</div>
+          </div>
+
+          <div id="attack-preview-readout" class="attack-preview-readout">Choose an attack to preview its origin and size.</div>
+          <div class="form-hint">Origin X/Y are percentages of the 640 × 360 canvas. Attack size is stored in logical canvas pixels.</div>
+        </section>
+
+        <section class="card boss-library-list-card">
+          <div class="boss-library-list-header">
+            <div>
+              <div class="eyebrow">Published encounters</div>
+              <h2>Platform library</h2>
+            </div>
+            <button id="refresh-bosses" class="btn" type="button">Refresh</button>
+          </div>
+          <div id="boss-library-list" class="boss-library-grid" aria-live="polite"></div>
+        </section>
+      </aside>
     </section>
   </main>
 
   <template id="boss-attack-template">
-    <article class="boss-attack-card">
+    <article class="boss-attack-card" tabindex="-1">
       <div class="boss-attack-card-heading">
         <strong class="boss-attack-number">Attack</strong>
-        <button class="btn boss-attack-remove" type="button">Remove</button>
+        <div class="boss-attack-card-actions">
+          <button class="btn boss-attack-preview-button" type="button">Preview</button>
+          <button class="btn boss-attack-remove" type="button">Remove</button>
+        </div>
       </div>
 
       <div class="encounter-field-grid two">
@@ -209,6 +233,33 @@
             <option value="shockwave">Whole arena shockwave - jump</option>
           </select>
         </div>
+      </div>
+
+      <div class="attack-origin-fields">
+        <div class="encounter-field-grid three compact-fields">
+          <div class="form-row">
+            <label>Attack origin X</label>
+            <div class="input-with-suffix">
+              <input data-field="originX" type="number" min="0" max="100" step="1" value="50" required>
+              <span>%</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Attack origin Y</label>
+            <div class="input-with-suffix">
+              <input data-field="originY" type="number" min="0" max="100" step="1" value="24" required>
+              <span>%</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label data-size-label>Fireball radius</label>
+            <div class="input-with-suffix">
+              <input data-field="size" type="number" min="4" max="640" step="1" value="34" required>
+              <span>px</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-hint" data-size-hint>Radius of the projectile on the logical 640 × 360 canvas.</div>
       </div>
 
       <div class="encounter-field-grid four compact-fields">
