@@ -24,13 +24,13 @@ export const BOSS_DEFINITIONS = {
       idleBob: 2.5,
       idleBreath: 0.007,
       hitRecoil: 17,
-      defeatSink: 430,
-      defeatDrift: -12,
-      defeatTilt: 0.085
+      defeatSink: 230,
+      defeatDrift: -8,
+      defeatTilt: 0.055
     },
     victory: {
-      bossFallMs: 4800,
-      celebrationMs: 7000
+      bossFallMs: 7000,
+      celebrationMs: 8200
     }
   }
 };
@@ -93,6 +93,17 @@ export function attackDamageForPower(hitCount, playerCount, attackPower) {
   const ratio = hitCount / Math.max(1, playerCount);
   const multiplier = [0, 0.65, 0.82, 1, 1.22, 1.48][clamp(Math.round(attackPower), 1, 5)];
   return clamp(Math.round((4 + ratio * 18) * multiplier), 2, 40);
+}
+
+export function hardcorePlayerDamageForPower(attackPower) {
+  const damage = {
+    1: 12,
+    2: 18,
+    3: 24,
+    4: 32,
+    5: 40
+  };
+  return damage[clamp(Math.round(attackPower), 1, 5)];
 }
 
 export function chooseAttack(definition) {
