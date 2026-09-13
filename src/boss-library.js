@@ -11,6 +11,7 @@ const ALLOWED_IMAGE_TYPES = new Map([
 const ATTACK_TYPES = new Set(['beam', 'smash', 'fireball']);
 const ATTACK_FACES = new Set(['left', 'right', 'front']);
 const ATTACK_MECHANICS = new Set(['left_slam', 'right_slam', 'shockwave']);
+const BEAM_SWEEP_DIRECTIONS = new Set(['left_to_right', 'right_to_left']);
 const CUSTOM_ID = /^custom-[a-z0-9-]+$/;
 
 function slugify(value = '') {
@@ -48,9 +49,18 @@ function defaultAttackSize(type) {
   return 34;
 }
 
-function attackGeometry(type, rawSize) {
+function normaliseBeamSweepDirection(value) {
+  return BEAM_SWEEP_DIRECTIONS.has(value) ? value : 'left_to_right';
+}
+
+function attackGeometry(type, rawSize, rawSweepDirection = null) {
   const size = Math.round(safeNumber(rawSize, 4, 640, defaultAttackSize(type)));
-  if (type === 'beam') return { beamWidth: size };
+  if (type === 'beam') {
+    return {
+      beamWidth: size,
+      sweepDirection: normaliseBeamSweepDirection(rawSweepDirection)
+    };
+  }
   return { radius: size };
 }
 
@@ -109,6 +119,10 @@ function parseAttackDefinitions(value) {
     const mechanic = ATTACK_MECHANICS.has(attack?.mechanic) ? attack.mechanic : 'shockwave';
     const baseDamage = Math.round(safeNumber(attack?.baseDamage, 1, 500, 24));
     const critDamage = Math.round(safeNumber(attack?.critDamage, baseDamage, 1000, Math.max(baseDamage, 40)));
+    const sweepDirection = type === 'beam'
+      ? normaliseBeamSweepDirection(attack?.sweepDirection ?? attack?.geometry?.sweepDirection)
+      : null;
+
     return {
       id: `attack-${index + 1}`,
       name: safeText(attack?.name, `Attack ${index + 1}`, 50),
@@ -119,7 +133,11 @@ function parseAttackDefinitions(value) {
         x: safeNumber(attack?.originX ?? attack?.origin?.x, 0, 100, 50),
         y: safeNumber(attack?.originY ?? attack?.origin?.y, 0, 100, 24)
       },
-      geometry: attackGeometry(type, attack?.size ?? attack?.geometry?.beamWidth ?? attack?.geometry?.radius),
+      geometry: attackGeometry(
+        type,
+        attack?.size ?? attack?.geometry?.beamWidth ?? attack?.geometry?.radius,
+        sweepDirection
+      ),
       baseDamage,
       critDamage,
       warningMs: Math.round(safeNumber(attack?.warningMs, 500, 10000, 1650)),
@@ -172,48 +190,26 @@ async function buildEncounterDefinition(form, env, { id, existing = null }) {
   };
 
   const backgroundUrl = queueImage({
-    env,
-    uploadJobs,
-    id,
-    revision,
-    name: 'background',
-    file: form.get('background'),
-    label: 'Background',
-    existing: existing?.art?.backgroundBack
+    env, uploadJobs, id, revision, name: 'background',
+    file: form.get('background'), label: 'Background', existing: existing?.art?.backgroundBack
   });
 
   const neutralUrl = queueImage({
-    env,
-    uploadJobs,
-    id,
-    revision,
-    name: 'neutral',
-    file: form.get('idle'),
-    label: 'Neutral',
+    env, uploadJobs, id, revision, name: 'neutral',
+    file: form.get('idle'), label: 'Neutral',
     existing: existing?.art?.bossNeutral || existing?.art?.bossIdle || existing?.art?.boss
   });
 
   const deathUrl = queueImage({
-    env,
-    uploadJobs,
-    id,
-    revision,
-    name: 'death',
-    file: form.get('death'),
-    label: 'Death',
+    env, uploadJobs, id, revision, name: 'death',
+    file: form.get('death'), label: 'Death',
     existing: existing?.art?.bossDeath || existing?.art?.bossNeutral || existing?.art?.bossIdle || existing?.art?.boss
   });
 
   const foregroundUrl = queueImage({
-    env,
-    uploadJobs,
-    id,
-    revision,
-    name: 'foreground',
-    file: form.get('foreground'),
-    label: 'Foreground',
-    existing: existing?.art?.backgroundFront,
-    required: false
+    env, uploadJobs, id, revision, name: 'foreground',
+    file: form.get('foreground'), label: 'Foreground',
+    existing: existing?.art?.backgroundFront, required: false
   });
 
   const attackDefinitions = parseAttackDefinitions(form.get('attackDefinitions'));
@@ -257,7 +253,7 @@ async function buildEncounterDefinition(form, env, { id, existing = null }) {
   const enrageDamageMultiplier = safeNumber(form.get('enrageDamageMultiplier'), 1, 5, existing?.enrage?.damageMultiplier || 1.5);
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id,
     name,
     encounter,
