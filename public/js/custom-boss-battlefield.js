@@ -19,6 +19,11 @@ function loadImage(src) {
   });
 }
 
+async function loadOptionalImage(src) {
+  if (!src) return null;
+  return loadImage(src);
+}
+
 export function createRaidBattlefield(options = {}) {
   const host = document.getElementById(options.parent || 'phaser-game');
   if (!host) throw new Error('Battlefield mount was not found');
@@ -63,7 +68,8 @@ export function createRaidBattlefield(options = {}) {
   async function setCustomBoss(state) {
     const art = state?.boss?.art || {};
     const id = String(state?.boss?.id || '');
-    const isCustom = id.startsWith('custom-') && art.bossIdle;
+    const neutralSrc = art.bossNeutral || art.bossIdle;
+    const isCustom = id.startsWith('custom-') && neutralSrc;
     if (!isCustom) {
       custom = null;
       lastSignature = '';
@@ -71,7 +77,15 @@ export function createRaidBattlefield(options = {}) {
       return;
     }
 
-    const signature = [id, art.bossIdle, art.bossAttack, art.backgroundBack, art.backgroundFront].join('|');
+    const signature = [
+      id,
+      neutralSrc,
+      art.bossAttack,
+      art.bossDeath,
+      art.backgroundBack,
+      art.backgroundFront,
+      art.attackFaces
+    ].join('|');
     canvas.style.display = 'block';
 
     const presentation = {
@@ -81,35 +95,43 @@ export function createRaidBattlefield(options = {}) {
 
     if (custom && signature === lastSignature) {
       custom.presentation = presentation;
-      custom.attackFaces = art.attackFaces === 'right' ? 'right' : 'left';
+      custom.attackFaces = ['left', 'right', 'front'].includes(art.attackFaces) ? art.attackFaces : 'left';
       custom.status = state.status;
       return;
     }
 
     lastSignature = signature;
-    const [idle, attack, back, front] = await Promise.all([
-      loadImage(art.bossIdle),
-      loadImage(art.bossAttack || art.bossIdle),
+    const [idle, attack, death, back, front] = await Promise.all([
+      loadImage(neutralSrc),
+      loadImage(art.bossAttack || neutralSrc),
+      loadImage(art.bossDeath || neutralSrc),
       loadImage(art.backgroundBack || '/art/city-back.svg'),
-      loadImage(art.backgroundFront || '/art/city-front.svg')
+      loadOptionalImage(art.backgroundFront)
     ]);
 
     custom = {
       id,
       idle,
       attack,
+      death,
       back,
       front,
       presentation,
-      attackFaces: art.attackFaces === 'right' ? 'right' : 'left',
+      attackFaces: ['left', 'right', 'front'].includes(art.attackFaces) ? art.attackFaces : 'left',
       status: state.status
     };
   }
 
   function attackSpriteState() {
+    if (complete === 'victory') return { image: custom?.death || custom?.idle, flip: false };
+
     const type = attackType;
     if (!type || Date.now() > attackUntil || !['left_slam', 'right_slam'].includes(type)) {
       return { image: custom?.idle, flip: false };
+    }
+
+    if (custom?.attackFaces === 'front') {
+      return { image: custom?.attack || custom?.idle, flip: false };
     }
 
     const targetFaces = type === 'left_slam' ? 'left' : 'right';
@@ -148,7 +170,7 @@ export function createRaidBattlefield(options = {}) {
     ctx.rect(0, 0, WIDTH, MASK_BOTTOM);
     ctx.clip();
 
-    ctx.drawImage(custom.back, 0, 0, WIDTH, HEIGHT);
+    if (custom.back) ctx.drawImage(custom.back, 0, 0, WIDTH, HEIGHT);
 
     let yOffset = 0;
     let rotation = 0;
@@ -174,7 +196,7 @@ export function createRaidBattlefield(options = {}) {
       rotation
     );
 
-    ctx.drawImage(custom.front, 0, 0, WIDTH, HEIGHT);
+    if (custom.front) ctx.drawImage(custom.front, 0, 0, WIDTH, HEIGHT);
     ctx.restore();
   }
 
