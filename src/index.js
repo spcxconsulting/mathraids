@@ -1,7 +1,12 @@
 import { RaidRoom } from './raid-room-library.js';
 import {
+  adminAuthorised,
+  adminConfigured,
+  loginAdmin,
+  logoutAdmin
+} from './admin-auth.js';
+import {
   bossLibraryAvailable,
-  bossWriteAuthorised,
   createBossTemplate,
   deleteBossTemplate,
   getBossFromLibrary,
@@ -48,13 +53,36 @@ export default {
       });
     }
 
+    if (url.pathname === '/api/admin/session' && request.method === 'GET') {
+      return json({
+        configured: adminConfigured(request, env),
+        authenticated: await adminAuthorised(request, env)
+      });
+    }
+
+    if (url.pathname === '/api/admin/login' && request.method === 'POST') {
+      return loginAdmin(request, env);
+    }
+
+    if (url.pathname === '/api/admin/logout' && request.method === 'POST') {
+      return logoutAdmin(request);
+    }
+
+    if (url.pathname === '/host/bosses' || url.pathname === '/host/bosses/') {
+      return Response.redirect(`${url.origin}/admin/bosses/`, 302);
+    }
+
+    if ((url.pathname === '/admin/bosses' || url.pathname === '/admin/bosses/') && !(await adminAuthorised(request, env))) {
+      return Response.redirect(`${url.origin}/admin/`, 302);
+    }
+
     if (url.pathname === '/api/bosses' && request.method === 'GET') {
       return json({ bosses: await listBosses(env) });
     }
 
     if (url.pathname === '/api/bosses' && request.method === 'POST') {
       if (!bossLibraryAvailable(env)) return json({ error: 'Boss asset storage is not configured.' }, 503);
-      if (!bossWriteAuthorised(request, env)) return json({ error: 'Boss Library key is required.' }, 403);
+      if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
       try {
         const boss = await createBossTemplate(request, env);
         return json({ boss }, 201);
@@ -65,7 +93,7 @@ export default {
 
     const deleteBossMatch = url.pathname.match(/^\/api\/bosses\/(custom-[a-z0-9-]+)$/);
     if (deleteBossMatch && request.method === 'DELETE') {
-      if (!bossWriteAuthorised(request, env)) return json({ error: 'Boss Library key is required.' }, 403);
+      if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
       const deleted = await deleteBossTemplate(env, deleteBossMatch[1]);
       return deleted ? json({ ok: true }) : json({ error: 'Boss template not found.' }, 404);
     }
