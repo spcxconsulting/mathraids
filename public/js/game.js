@@ -268,23 +268,17 @@ function handleMessage(payload) {
 
 function startVictorySequence(state) {
   const bossName = state?.boss?.name || 'The boss';
-  const configuredFallMs = Math.max(1600, Number(state?.boss?.victory?.bossFallMs) || 4200);
-  const rendererFallMs = 1600;
-  const leadInMs = Math.max(0, configuredFallMs - rendererFallMs);
 
   if (victorySubtitle) victorySubtitle.textContent = `${bossName} is down. The raid wins together.`;
   buildConfetti();
   victoryCelebration?.classList.add('active');
   victoryCelebration?.setAttribute('aria-hidden', 'false');
 
-  // The current boss renderer has a one-shot 1.6 second fall. Hold the defeated
-  // moment first so the complete victory beat lasts for the configured boss
-  // duration. The renderer can consume bossFallMs directly once animations are
-  // moved fully into reusable boss presentation classes.
-  setTimeout(() => battlefield.complete('victory'), leadInMs);
+  // BossPresentation now owns the full defeat timeline, so start the cinematic
+  // immediately. Numberzilla sinks behind the skyline for the configured
+  // bossFallMs instead of pausing and then performing a short fixed drop.
+  battlefield.complete('victory');
 
-  // Give the visible group a couple of harmless celebration hops. Remote hops are
-  // reconstructed locally, so this creates no extra live-room state requirement.
   for (const delay of [300, 1250, 2200]) {
     setTimeout(() => {
       if (playerId) battlefield.jump();
