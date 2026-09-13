@@ -125,7 +125,11 @@ export function createRaidBattlefield({
     assetsReady: false,
     rawAssets: null,
     cache: null,
-    renderScale: 1
+    renderScale: 1,
+    encounterScene: null,
+    encounterCache: null,
+    encounterSignature: '',
+    encounterLoadToken: 0
   };
 
   function localPlayer() {
@@ -135,6 +139,24 @@ export function createRaidBattlefield({
   function faceBoss(entry) {
     if (state.mode !== 'raid') return;
     entry.facing = entry.x < BOSS_X ? 'right' : 'left';
+  }
+
+  function rebuildEncounterCache() {
+    const scene = state.encounterScene;
+    if (!scene?.raw) {
+      state.encounterCache = null;
+      return;
+    }
+
+    const scale = state.renderScale;
+    const presentation = scene.presentation;
+    state.encounterCache = {
+      back: makeRaster(scene.raw.back, WIDTH, HEIGHT, scale),
+      front: scene.raw.front ? makeRaster(scene.raw.front, WIDTH, HEIGHT, scale) : null,
+      neutral: makeRaster(scene.raw.neutral, presentation.width, presentation.height, scale),
+      attack: scene.raw.attack ? makeRaster(scene.raw.attack, presentation.width, presentation.height, scale) : null,
+      death: scene.raw.death ? makeRaster(scene.raw.death, presentation.width, presentation.height, scale) : null
+    };
   }
 
   function rebuildCache() {
@@ -148,7 +170,69 @@ export function createRaidBattlefield({
       healer: makeRaster(state.rawAssets.healer, PLAYER_W, PLAYER_H, scale),
       boss: makeRaster(state.rawAssets.boss, BOSS_W, BOSS_H, scale)
     };
+    rebuildEncounterCache();
     state.assetsReady = true;
+  }
+
+  async function setEncounterScene(serverState) {
+    const boss = serverState?.boss || {};
+    const art = boss.art || {};
+    const id = String(boss.id || '');
+    const custom = id.startsWith('custom-') && (art.bossNeutral || art.bossIdle || art.boss) && art.backgroundBack;
+
+    if (!custom) {
+      state.encounterScene = null;
+      state.encounterCache = null;
+      state.encounterSignature = '';
+      state.encounterLoadToken += 1;
+      return;
+    }
+
+    const presentation = {
+      width: Math.max(1, Number(boss.presentation?.width) || BOSS_W),
+      height: Math.max(1, Number(boss.presentation?.height) || BOSS_H),
+      top: Number.isFinite(Number(boss.presentation?.top)) ? Number(boss.presentation.top) : BOSS_TOP
+    };
+    const neutralSrc = art.bossNeutral || art.bossIdle || art.boss;
+    const attackSrc = art.bossAttack || neutralSrc;
+    const deathSrc = art.bossDeath || neutralSrc;
+    const signature = [
+      id,
+      art.backgroundBack,
+      art.backgroundFront || '',
+      neutralSrc,
+      attackSrc,
+      deathSrc,
+      presentation.width,
+      presentation.height,
+      presentation.top,
+      art.attackFaces || 'left'
+    ].join('|');
+
+    if (state.encounterScene && state.encounterSignature === signature) {
+      state.encounterScene.presentation = presentation;
+      state.encounterScene.attackFaces = art.attackFaces || 'left';
+      return;
+    }
+
+    const token = ++state.encounterLoadToken;
+    const [back, front, neutral, attack, death] = await Promise.all([
+      loadImage(art.backgroundBack),
+      art.backgroundFront ? loadImage(art.backgroundFront) : Promise.resolve(null),
+      loadImage(neutralSrc),
+      attackSrc ? loadImage(attackSrc) : Promise.resolve(null),
+      deathSrc ? loadImage(deathSrc) : Promise.resolve(null)
+    ]);
+    if (token !== state.encounterLoadToken) return;
+
+    state.encounterSignature = signature;
+    state.encounterScene = {
+      id,
+      presentation,
+      attackFaces: art.attackFaces || 'left',
+      raw: { back, front, neutral, attack, death }
+    };
+    rebuildEncounterCache();
   }
 
   function resize() {
@@ -235,6 +319,12 @@ export function createRaidBattlefield({
       state.bossPresentation.configure({
         presentation: serverState.boss.presentation || {},
         victory: serverState.boss.victory || {}
+      });
+      setEncounterScene(serverState).catch((error) => {
+        console.error('Could not load encounter scene artwork', error);
+        state.encounterScene = null;
+        state.encounterCache = null;
+        state.encounterSignature = '';
       });
     }
 
@@ -486,10 +576,43 @@ export function createRaidBattlefield({
     });
   }
 
+  function customBossFrame(now) {
+    const scene = state.encounterScene;
+    const cache = state.encounterCache;
+    if (!scene || !cache?.neutral) return null;
+
+    if (state.complete === 'victory' && cache.death) {
+      return { image: cache.death, flip: false };
+    }
+
+    const attackType = state.telegraph?.type || (now < state.bossAttackUntil ? state.bossAttackType : null);
+    if (attackType && cache.attack) {
+      if (scene.attackFaces === 'front') return { image: cache.attack, flip: false };
+      if (attackType === 'left_slam' || attackType === 'right_slam') {
+        const targetFaces = attackType === 'left_slam' ? 'left' : 'right';
+        return { image: cache.attack, flip: scene.attackFaces !== targetFaces };
+      }
+      return { image: cache.attack, flip: false };
+    }
+
+    return { image: cache.neutral, flip: false };
+  }
+
   function drawBoss(now) {
-    if (state.mode !== 'raid' || state.complete === 'defeat' || !state.cache?.boss) return;
+    if (state.mode !== 'raid' || state.complete === 'defeat') return;
+
+    const customFrame = customBossFrame(now);
+    const useCustom = Boolean(customFrame);
+    const bossImage = useCustom ? customFrame.image : state.cache?.boss;
+    if (!bossImage) return;
 
     const pose = bossPose(now);
+    const presentation = useCustom
+      ? state.encounterScene.presentation
+      : { width: BOSS_W, height: BOSS_H, top: BOSS_TOP };
+    const width = presentation.width;
+    const height = presentation.height;
+    const top = presentation.top;
 
     if (pose.aura > 0) {
       const gradient = ctx.createRadialGradient(BOSS_X, 118, 40, BOSS_X, 118, 230);
@@ -500,15 +623,16 @@ export function createRaidBattlefield({
     }
 
     ctx.save();
-    ctx.translate(BOSS_X + pose.x, BOSS_TOP + BOSS_H / 2 + pose.y);
+    ctx.translate(BOSS_X + pose.x, top + height / 2 + pose.y);
     ctx.rotate(pose.rotation);
     ctx.scale(pose.scaleX, pose.scaleY);
-    ctx.translate(-BOSS_W / 2, -BOSS_H / 2);
+    if (customFrame?.flip) ctx.scale(-1, 1);
+    ctx.translate(-width / 2, -height / 2);
 
     if (now < state.bossHitUntil && state.complete !== 'victory') {
       ctx.filter = 'brightness(1.75) saturate(1.25)';
     }
-    ctx.drawImage(state.cache.boss, 0, 0, BOSS_W, BOSS_H);
+    ctx.drawImage(bossImage, 0, 0, width, height);
     ctx.restore();
     ctx.filter = 'none';
   }
@@ -775,9 +899,17 @@ export function createRaidBattlefield({
     ctx.fillStyle = '#071426';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    drawRaster(state.cache?.cityBack, 0, 0, WIDTH, HEIGHT);
-    drawBoss(now);
-    drawRaster(state.cache?.cityFront, 0, 0, WIDTH, HEIGHT);
+    const customScene = state.mode === 'raid' && state.encounterScene && state.encounterCache;
+    if (customScene) {
+      drawRaster(state.encounterCache.back, 0, 0, WIDTH, HEIGHT);
+      drawBoss(now);
+      if (state.encounterCache.front) drawRaster(state.encounterCache.front, 0, 0, WIDTH, HEIGHT);
+    } else {
+      drawRaster(state.cache?.cityBack, 0, 0, WIDTH, HEIGHT);
+      drawBoss(now);
+      drawRaster(state.cache?.cityFront, 0, 0, WIDTH, HEIGHT);
+    }
+
     if (state.mode === 'lobby') drawRaster(state.cache?.staging, 0, 0, WIDTH, HEIGHT);
     drawTelegraph(now);
 
@@ -875,6 +1007,7 @@ export function createRaidBattlefield({
     },
     destroy() {
       state.running = false;
+      state.encounterLoadToken += 1;
       resizeObserver.disconnect();
       window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
