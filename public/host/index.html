@@ -14,10 +14,10 @@
   </header>
 
   <main class="shell">
-    <section class="card form-card" style="max-width:820px">
+    <section class="card form-card" style="max-width:980px">
       <div class="eyebrow">Host console</div>
       <h1 style="font-size:clamp(2.5rem,7vw,4.5rem)">Create a raid</h1>
-      <p>Choose how punishing the raid should be, then configure the maths challenge and boss.</p>
+      <p>Choose how the raid should play, then configure the maths challenge and boss.</p>
 
       <form id="create-raid-form">
         <div class="form-row">
@@ -28,11 +28,11 @@
               <span class="mode-choice-card">
                 <span class="mode-choice-icon" aria-hidden="true">🛡️</span>
                 <span class="mode-choice-title">Normal Raid</span>
-                <span class="mode-choice-copy">A forgiving group experience with shared raid health. Great for first attempts, younger groups and casual play.</span>
+                <span class="mode-choice-copy">A forgiving group experience with shared raid health and curated encounter settings.</span>
                 <span class="mode-choice-tags">
                   <span class="mode-choice-tag">Shared health</span>
                   <span class="mode-choice-tag">No knockouts</span>
-                  <span class="mode-choice-tag">Beginner friendly</span>
+                  <span class="mode-choice-tag">Preset boss tuning</span>
                 </span>
               </span>
             </label>
@@ -47,7 +47,20 @@
                   <span class="mode-choice-tag">Individual HP</span>
                   <span class="mode-choice-tag">Knockouts</span>
                   <span class="mode-choice-tag">Raid wipes</span>
-                  <span class="mode-choice-tag">Tank mechanics</span>
+                </span>
+              </span>
+            </label>
+
+            <label class="mode-choice custom">
+              <input type="radio" name="mode" value="custom">
+              <span class="mode-choice-card">
+                <span class="mode-choice-icon" aria-hidden="true">⚙️</span>
+                <span class="mode-choice-title">Custom Raid</span>
+                <span class="mode-choice-copy">Uses Normal shared-health rules, but unlocks boss health, aggression, attack power and warning-time controls.</span>
+                <span class="mode-choice-tags">
+                  <span class="mode-choice-tag">Shared health</span>
+                  <span class="mode-choice-tag">Boss tuning</span>
+                  <span class="mode-choice-tag">Host controlled</span>
                 </span>
               </span>
             </label>
