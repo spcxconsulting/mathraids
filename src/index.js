@@ -1,4 +1,4 @@
-import { RaidRoom } from './raid-room-impact.js';
+import { RaidRoom } from './raid-room-library.js';
 import {
   bossLibraryAvailable,
   bossWriteAuthorised,
