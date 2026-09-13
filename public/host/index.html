@@ -32,7 +32,7 @@
                 <span class="mode-choice-tags">
                   <span class="mode-choice-tag">Shared health</span>
                   <span class="mode-choice-tag">No knockouts</span>
-                  <span class="mode-choice-tag">Preset boss tuning</span>
+                  <span class="mode-choice-tag">Rewards eligible</span>
                 </span>
               </span>
             </label>
@@ -46,7 +46,7 @@
                 <span class="mode-choice-tags">
                   <span class="mode-choice-tag">Individual HP</span>
                   <span class="mode-choice-tag">Knockouts</span>
-                  <span class="mode-choice-tag">Raid wipes</span>
+                  <span class="mode-choice-tag">Rewards eligible</span>
                 </span>
               </span>
             </label>
@@ -56,16 +56,52 @@
               <span class="mode-choice-card">
                 <span class="mode-choice-icon" aria-hidden="true">⚙️</span>
                 <span class="mode-choice-title">Custom Raid</span>
-                <span class="mode-choice-copy">Uses Normal shared-health rules, but unlocks boss health, aggression, attack power and warning-time controls.</span>
+                <span class="mode-choice-copy">Build your own ruleset. Choose the health model and enable or disable raid mechanics before launching.</span>
                 <span class="mode-choice-tags">
-                  <span class="mode-choice-tag">Shared health</span>
+                  <span class="mode-choice-tag">Flexible rules</span>
                   <span class="mode-choice-tag">Boss tuning</span>
-                  <span class="mode-choice-tag">Host controlled</span>
+                  <span class="mode-choice-tag">No rewards</span>
                 </span>
               </span>
             </label>
           </div>
         </div>
+
+        <section id="custom-rules" class="custom-rules-panel" hidden>
+          <div class="eyebrow">Custom rules</div>
+          <h2>Build the raid your way</h2>
+          <p class="small muted">Custom raids are for experimentation and do not award achievements, progression or loot.</p>
+
+          <div class="grid grid-2">
+            <div class="form-row">
+              <label for="custom-health-mode">Health model</label>
+              <select id="custom-health-mode" name="customHealthMode">
+                <option value="shared" selected>Shared raid health</option>
+                <option value="individual">Individual player health</option>
+              </select>
+            </div>
+            <label class="custom-toggle">
+              <input id="custom-knockouts" name="customKnockouts" type="checkbox" checked disabled>
+              <span><strong>Knockouts + raid wipe</strong><small>Available with Individual player health. Players can be knocked out and the raid wipes if everyone falls.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input name="customTankGuard" type="checkbox" checked>
+              <span><strong>Tank Guard</strong><small>Nearby Tanks reduce damage for teammates caught in the same attack.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input name="customFortify" type="checkbox" checked>
+              <span><strong>Tank Fortify</strong><small>Allows the Tank defensive special and protective bubble.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input name="customJumpFatigue" type="checkbox" checked>
+              <span><strong>Jump fatigue</strong><small>Repeated jumps rapidly lose height and eventually trigger recovery time.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input name="customAirborneMitigation" type="checkbox" checked>
+              <span><strong>Airborne damage reduction</strong><small>Being airborne reduces damage from attacks that still connect.</small></span>
+            </label>
+          </div>
+        </section>
 
         <div class="form-row">
           <label for="topic">Maths category</label>
