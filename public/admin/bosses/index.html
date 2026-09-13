@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Boss Library - MathRaids Super Admin</title>
+  <title>Encounter Builder - MathRaids Super Admin</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/host.css">
   <link rel="stylesheet" href="/css/boss-library.css">
@@ -20,65 +20,142 @@
   <main class="shell boss-library-shell">
     <section class="card boss-library-intro">
       <div class="eyebrow">Super Admin</div>
-      <h1>Boss Library</h1>
-      <p>Manage the canonical boss templates available across MathRaids.</p>
-      <p class="form-hint">This is private platform tooling. A separate encounter builder can later let hosts create their own raids without giving them access to this library.</p>
+      <h1>Boss &amp; Encounter Builder</h1>
+      <p>Build the canonical encounters that appear across MathRaids. Scene art, boss poses, attacks and encounter rules are saved together as one reusable definition.</p>
+      <p class="form-hint">This remains private platform tooling. Host-created encounters will be a separate feature later.</p>
     </section>
 
-    <section class="boss-library-layout">
-      <form id="boss-template-form" class="card boss-template-form">
-        <div class="eyebrow">Add boss</div>
-        <h2>New boss template</h2>
+    <section class="boss-library-layout encounter-builder-layout">
+      <form id="boss-template-form" class="card boss-template-form encounter-form">
+        <div class="eyebrow">Encounter definition v2</div>
+        <h2>New boss encounter</h2>
 
-        <div class="form-row">
-          <label for="boss-name">Boss name</label>
-          <input id="boss-name" name="name" maxlength="60" required placeholder="e.g. Reactor Rex">
-        </div>
-
-        <div class="form-row">
-          <label for="boss-encounter">Encounter name</label>
-          <input id="boss-encounter" name="encounter" maxlength="80" placeholder="e.g. Power Plant Panic">
-        </div>
-
-        <div class="form-row">
-          <label for="boss-idle">Idle / front sprite</label>
-          <input id="boss-idle" name="idle" type="file" accept="image/png,image/jpeg,image/webp" required>
-          <div class="form-hint">Shown while standing, charging, taking hits and sinking on defeat.</div>
-        </div>
-
-        <div class="form-row">
-          <label for="boss-attack">Attack / side sprite</label>
-          <input id="boss-attack" name="attack" type="file" accept="image/png,image/jpeg,image/webp" required>
-        </div>
-
-        <div class="form-row">
-          <label for="boss-attack-faces">Uploaded attack sprite faces</label>
-          <select id="boss-attack-faces" name="attackFaces">
-            <option value="left" selected>Left</option>
-            <option value="right">Right</option>
-          </select>
-          <div class="form-hint">MathRaids mirrors the sprite automatically for attacks in the opposite direction.</div>
-        </div>
-
-        <div class="boss-preview-grid" aria-label="Boss artwork preview">
-          <div class="boss-preview-card">
-            <span>Idle</span>
-            <img id="idle-preview" alt="Idle boss preview">
+        <fieldset class="encounter-section">
+          <legend>Encounter</legend>
+          <div class="encounter-field-grid two">
+            <div class="form-row">
+              <label for="boss-encounter">Encounter name</label>
+              <input id="boss-encounter" name="encounter" maxlength="80" required placeholder="e.g. Power Plant Panic">
+            </div>
+            <div class="form-row">
+              <label for="boss-name">Boss name</label>
+              <input id="boss-name" name="name" maxlength="60" required placeholder="e.g. Reactor Rex">
+            </div>
           </div>
-          <div class="boss-preview-card">
-            <span>Attack</span>
-            <img id="attack-preview" alt="Attack boss preview">
+
+          <div class="encounter-field-grid two">
+            <div class="form-row">
+              <label for="canvas-width">Base canvas width</label>
+              <input id="canvas-width" name="canvasWidth" type="number" value="640" readonly>
+            </div>
+            <div class="form-row">
+              <label for="canvas-height">Base canvas height</label>
+              <input id="canvas-height" name="canvasHeight" type="number" value="360" readonly>
+            </div>
           </div>
-        </div>
+          <div class="form-hint">MathRaids currently uses a fixed logical 640 × 360 battlefield. Uploaded scene art should be composed for this 16:9 canvas.</div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <legend>Scene artwork</legend>
+          <div class="form-row">
+            <label for="encounter-background">Background image</label>
+            <input id="encounter-background" name="background" type="file" accept="image/png,image/jpeg,image/webp" required>
+            <div class="form-hint">Full-canvas art drawn behind the boss.</div>
+          </div>
+          <div class="form-row">
+            <label for="encounter-foreground">Foreground image <span class="optional">optional</span></label>
+            <input id="encounter-foreground" name="foreground" type="file" accept="image/png,image/jpeg,image/webp">
+            <div class="form-hint">Full-canvas transparent art drawn in front of the boss, such as buildings, rocks, rails or scenery.</div>
+          </div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <legend>Boss presentation</legend>
+          <div class="encounter-field-grid two">
+            <div class="form-row">
+              <label for="boss-idle">Neutral image</label>
+              <input id="boss-idle" name="idle" type="file" accept="image/png,image/jpeg,image/webp" required>
+            </div>
+            <div class="form-row">
+              <label for="boss-death">Death / defeated image</label>
+              <input id="boss-death" name="death" type="file" accept="image/png,image/jpeg,image/webp" required>
+            </div>
+          </div>
+
+          <div class="encounter-field-grid three compact-fields">
+            <div class="form-row">
+              <label for="boss-width">Boss width</label>
+              <input id="boss-width" name="bossWidth" type="number" min="64" max="900" value="560" required>
+            </div>
+            <div class="form-row">
+              <label for="boss-height">Boss height</label>
+              <input id="boss-height" name="bossHeight" type="number" min="64" max="900" value="490" required>
+            </div>
+            <div class="form-row">
+              <label for="boss-top">Boss top Y</label>
+              <input id="boss-top" name="bossTop" type="number" min="-500" max="360" value="-92" required>
+            </div>
+          </div>
+          <div class="form-hint">These control the boss bounding box on the 640 × 360 logical canvas. The boss remains horizontally centred for now.</div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <div class="encounter-section-heading">
+            <div>
+              <legend>Boss attacks</legend>
+              <div class="form-hint">Every attack has its own pose, visual style, damage and dodge mechanic.</div>
+            </div>
+            <button id="add-boss-attack" class="btn" type="button">+ Add another boss attack</button>
+          </div>
+          <div id="boss-attacks" class="boss-attacks"></div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <legend>Enrage</legend>
+          <div class="encounter-field-grid two">
+            <div class="form-row">
+              <label for="enrage-seconds">Boss enrage timer</label>
+              <div class="input-with-suffix">
+                <input id="enrage-seconds" name="enrageSeconds" type="number" min="0" max="3600" step="5" value="120">
+                <span>seconds</span>
+              </div>
+              <div class="form-hint">Set to 0 for no enrage timer.</div>
+            </div>
+            <div class="form-row">
+              <label for="enrage-multiplier">Enrage damage multiplier</label>
+              <input id="enrage-multiplier" name="enrageDamageMultiplier" type="number" min="1" max="5" step="0.1" value="1.5">
+              <div class="form-hint">Stored now so the runtime can increase boss damage once enrage is wired in.</div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <legend>Loot table</legend>
+          <div class="loot-placeholder">
+            <strong>Loot table v1</strong>
+            <span>This encounter will be created with an empty loot table. We will build the item/drop editor in the next pass.</span>
+          </div>
+        </fieldset>
+
+        <fieldset class="encounter-section">
+          <legend>Scene preview</legend>
+          <div class="encounter-scene-preview" id="encounter-scene-preview" aria-label="Encounter scene preview">
+            <img id="background-preview" class="scene-layer background" alt="Background preview">
+            <img id="neutral-preview" class="scene-layer boss" alt="Boss neutral preview">
+            <img id="foreground-preview" class="scene-layer foreground" alt="Foreground preview">
+            <div class="scene-preview-empty">Upload the scene and boss artwork to preview the layer order.</div>
+          </div>
+        </fieldset>
 
         <div id="boss-template-message" aria-live="polite"></div>
-        <button id="save-boss-template" class="btn btn-primary btn-lg" type="submit">Save boss template</button>
+        <button id="save-boss-template" class="btn btn-primary btn-lg" type="submit">Save encounter</button>
       </form>
 
       <section class="card boss-library-list-card">
         <div class="boss-library-list-header">
           <div>
-            <div class="eyebrow">Published bosses</div>
+            <div class="eyebrow">Published encounters</div>
             <h2>Platform library</h2>
           </div>
           <button id="refresh-bosses" class="btn" type="button">Refresh</button>
@@ -87,6 +164,77 @@
       </section>
     </section>
   </main>
+
+  <template id="boss-attack-template">
+    <article class="boss-attack-card">
+      <div class="boss-attack-card-heading">
+        <strong class="boss-attack-number">Attack</strong>
+        <button class="btn boss-attack-remove" type="button">Remove</button>
+      </div>
+
+      <div class="encounter-field-grid two">
+        <div class="form-row">
+          <label>Attack name</label>
+          <input data-field="name" maxlength="50" required placeholder="e.g. Plasma Barrage">
+        </div>
+        <div class="form-row">
+          <label>Attack type</label>
+          <select data-field="type">
+            <option value="beam">Beam</option>
+            <option value="smash">Smash</option>
+            <option value="fireball" selected>Fireball / projectile</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>Boss attack image</label>
+        <input data-field="image" type="file" accept="image/png,image/jpeg,image/webp" required>
+      </div>
+
+      <div class="encounter-field-grid two">
+        <div class="form-row">
+          <label>Uploaded image faces</label>
+          <select data-field="faces">
+            <option value="left" selected>Left</option>
+            <option value="right">Right</option>
+            <option value="front">Front / no mirroring</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Dodge mechanic</label>
+          <select data-field="mechanic">
+            <option value="left_slam">Danger on left side - move right</option>
+            <option value="right_slam">Danger on right side - move left</option>
+            <option value="shockwave">Whole arena shockwave - jump</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="encounter-field-grid four compact-fields">
+        <div class="form-row">
+          <label>Base damage</label>
+          <input data-field="baseDamage" type="number" min="1" max="500" value="24" required>
+        </div>
+        <div class="form-row">
+          <label>Crit damage</label>
+          <input data-field="critDamage" type="number" min="1" max="1000" value="40" required>
+        </div>
+        <div class="form-row">
+          <label>Warning ms</label>
+          <input data-field="warningMs" type="number" min="500" max="10000" step="50" value="1650" required>
+        </div>
+        <div class="form-row">
+          <label>Travel ms</label>
+          <input data-field="travelMs" type="number" min="0" max="10000" step="50" value="720" required>
+        </div>
+      </div>
+
+      <div class="boss-attack-preview">
+        <img data-preview="attack" alt="Boss attack pose preview">
+      </div>
+    </article>
+  </template>
 
   <script type="module" src="/js/boss-library.js"></script>
 </body>
