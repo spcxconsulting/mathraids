@@ -43,6 +43,7 @@ export function createRaidBattlefield(options = {}) {
   let localKnockedOut = false;
   let running = true;
   let lastFrameAt = performance.now();
+  let healTargetCallback = null;
   const input = { left: false, right: false };
   const players = new Map();
   const deathArt = { dps: null, healer: null };
@@ -53,18 +54,13 @@ export function createRaidBattlefield(options = {}) {
   ]).then(([dps, healer]) => {
     deathArt.dps = dps;
     deathArt.healer = healer;
-  }).catch(() => {
-    // The normal battlefield art remains authoritative. If these optional
-    // copies fail to load, the knockout animation falls back to a silhouette.
-  });
+  }).catch(() => {});
 
   const base = createBaseBattlefield({
     ...options,
     onPosition(position) {
       const local = players.get(localPlayerId);
-      if (local && Number.isFinite(Number(position.x))) {
-        local.serverX = pctToX(position.x);
-      }
+      if (local && Number.isFinite(Number(position.x))) local.serverX = pctToX(position.x);
       options.onPosition?.(position);
     },
     onJump() {
@@ -86,10 +82,6 @@ export function createRaidBattlefield(options = {}) {
     background: 'transparent'
   });
   host.append(overlay);
-
-  // Keep this overlay on the normal compositing path. A transparent
-  // desynchronised canvas can be promoted to an opaque low-latency surface on
-  // some Chromium/GPU combinations, which hides the battlefield underneath.
   const ctx = overlay.getContext('2d', { alpha: true });
 
   const koBanner = document.createElement('div');
@@ -140,6 +132,7 @@ export function createRaidBattlefield(options = {}) {
         knockedOutAt: startsOut ? performance.now() - DEATH_FALL_MS : 0,
         fortifyUntil: Number(player.fortifyUntil) || 0,
         guardFlashUntil: 0,
+        healPulseUntil: 0,
         dazedUntil: 0,
         initialised: false
       };
@@ -290,7 +283,7 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function healthBarOffsets() {
-    const entries = [...players.values()];
+    const entries = [...players.values()].filter((entry) => !entry.knockedOut);
     const local = entries.find((entry) => entry.id === localPlayerId);
     const placementOrder = local
       ? [local, ...entries.filter((entry) => entry.id !== localPlayerId).sort((a, b) => a.x - b.x)]
@@ -300,9 +293,7 @@ export function createRaidBattlefield(options = {}) {
 
     for (const entry of placementOrder) {
       let offset = 0;
-      while (placed.some((item) => Math.abs(item.x - entry.x) < 34 && Math.abs(item.y - (entry.y - 40 - offset)) < 7)) {
-        offset += 7;
-      }
+      while (placed.some((item) => Math.abs(item.x - entry.x) < 34 && Math.abs(item.y - (entry.y - 40 - offset)) < 7)) offset += 7;
       offsets.set(entry.id, offset);
       placed.push({ x: entry.x, y: entry.y - 40 - offset });
     }
@@ -310,7 +301,7 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function drawHealth(entry, now, offset = 0, isLocal = false) {
-    if (!hardcore) return;
+    if (!hardcore || entry.knockedOut) return;
     const barWidth = entry.class === 'tank' ? 34 : 30;
     const barHeight = 3;
     const x = entry.x - barWidth / 2;
@@ -330,20 +321,14 @@ export function createRaidBattlefield(options = {}) {
     ctx.fillStyle = 'rgba(4,9,16,.92)';
     ctx.fillRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
 
-    if (ratio > 0) {
-      const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
-      gradient.addColorStop(0, '#ef4f62');
-      gradient.addColorStop(0.52, '#ffcf58');
-      gradient.addColorStop(1, '#71e38a');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x, y, barWidth * ratio, barHeight);
-    }
+    const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
+    gradient.addColorStop(0, '#ef4f62');
+    gradient.addColorStop(0.52, '#ffcf58');
+    gradient.addColorStop(1, '#71e38a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, barWidth * ratio, barHeight);
 
-    ctx.strokeStyle = isLocal
-      ? '#f4fbff'
-      : entry.class === 'tank'
-        ? '#8ed7ff'
-        : 'rgba(255,255,255,.55)';
+    ctx.strokeStyle = isLocal ? '#f4fbff' : entry.class === 'tank' ? '#8ed7ff' : 'rgba(255,255,255,.55)';
     ctx.lineWidth = isLocal ? 1.35 : 0.8;
     ctx.strokeRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
 
@@ -353,8 +338,8 @@ export function createRaidBattlefield(options = {}) {
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = 'rgba(4,9,16,.95)';
       ctx.lineWidth = 2;
-      ctx.strokeText(entry.knockedOut ? 'YOU · OUT' : 'YOU', entry.x, y - 3);
-      ctx.fillText(entry.knockedOut ? 'YOU · OUT' : 'YOU', entry.x, y - 3);
+      ctx.strokeText('YOU', entry.x, y - 3);
+      ctx.fillText('YOU', entry.x, y - 3);
     }
   }
 
@@ -374,7 +359,6 @@ export function createRaidBattlefield(options = {}) {
     ctx.rotate(angle);
     if (entry.facing === 'left') ctx.scale(-1, 1);
     ctx.globalAlpha = 1 - eased * 0.18;
-
     if (image) {
       ctx.drawImage(image, -PLAYER_W / 2, -PLAYER_H, PLAYER_W, PLAYER_H);
     } else {
@@ -387,6 +371,44 @@ export function createRaidBattlefield(options = {}) {
     ctx.restore();
   }
 
+  function drawHealTargets(now) {
+    if (!healTargetCallback) return;
+    const pulse = 0.55 + (Math.sin(now / 120) + 1) * 0.18;
+    for (const entry of players.values()) {
+      if (entry.knockedOut || entry.health <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = 'rgba(90,255,150,.12)';
+      ctx.strokeStyle = '#8affaa';
+      ctx.lineWidth = entry.id === localPlayerId ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(entry.x, entry.y - 13, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = '800 7px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#dfffe7';
+      ctx.fillText(entry.id === localPlayerId ? 'HEAL SELF' : 'HEAL', entry.x, entry.y - 38);
+      ctx.restore();
+    }
+  }
+
+  function drawHealPulses(now) {
+    for (const entry of players.values()) {
+      if (entry.healPulseUntil <= now) continue;
+      const remaining = clamp((entry.healPulseUntil - now) / 700, 0, 1);
+      const radius = 18 + (1 - remaining) * 34;
+      ctx.save();
+      ctx.globalAlpha = remaining * 0.75;
+      ctx.strokeStyle = '#8affaa';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(entry.x, entry.y - 14, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function drawOverlay(now) {
     if (!hardcore || !overlay.width || !overlay.height) return;
     const scaleX = overlay.width / WIDTH;
@@ -397,12 +419,14 @@ export function createRaidBattlefield(options = {}) {
 
     for (const entry of players.values()) drawFortify(entry, now);
     for (const entry of players.values()) drawKnockedOut(entry, now);
+    drawHealPulses(now);
+    drawHealTargets(now);
 
     const offsets = healthBarOffsets();
-    const remotes = [...players.values()].filter((entry) => entry.id !== localPlayerId);
+    const remotes = [...players.values()].filter((entry) => entry.id !== localPlayerId && !entry.knockedOut);
     for (const entry of remotes) drawHealth(entry, now, offsets.get(entry.id) || 0, false);
     const local = players.get(localPlayerId);
-    if (local) drawHealth(local, now, offsets.get(local.id) || 0, true);
+    if (local && !local.knockedOut) drawHealth(local, now, offsets.get(local.id) || 0, true);
   }
 
   function frame(now) {
@@ -416,6 +440,30 @@ export function createRaidBattlefield(options = {}) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  function stopHealTargeting() {
+    healTargetCallback = null;
+    overlay.style.pointerEvents = 'none';
+    overlay.style.cursor = 'default';
+  }
+
+  function selectHealTarget(event) {
+    if (!healTargetCallback || !hardcore) return;
+    const rect = overlay.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((event.clientX - rect.left) / rect.width) * WIDTH;
+    const y = ((event.clientY - rect.top) / rect.height) * HEIGHT;
+    const candidates = [...players.values()]
+      .filter((entry) => !entry.knockedOut && entry.health > 0)
+      .map((entry) => ({ entry, distance: Math.hypot(entry.x - x, (entry.y - 13) - y) }))
+      .sort((a, b) => a.distance - b.distance);
+    const choice = candidates[0];
+    if (!choice || choice.distance > 30) return;
+    const callback = healTargetCallback;
+    stopHealTargeting();
+    callback(choice.entry.id);
+  }
+  overlay.addEventListener('pointerdown', selectHealTarget);
 
   function blockKnockedOutKeyboard(event) {
     if (!hardcore || !localKnockedOut) return;
@@ -475,11 +523,26 @@ export function createRaidBattlefield(options = {}) {
       if (entry && id !== localPlayerId && !entry.knockedOut) applyRemoteAirborne(entry, airborneUntil);
     },
     playerSpecial(payload) {
-      base.playerSpecial(payload);
       if (payload?.ability === 'fortify') {
         const entry = players.get(payload.playerId);
         if (entry) entry.fortifyUntil = Number(payload.fortifyUntil) || (Date.now() + 5000);
+        return;
       }
+      base.playerSpecial(payload);
+      if (payload?.ability === 'renewal_burst') {
+        const target = players.get(payload.targetPlayerId || payload.healedPlayerIds?.[0]);
+        if (target) target.healPulseUntil = performance.now() + 700;
+      }
+    },
+    beginHealTargeting(callback) {
+      if (!hardcore || typeof callback !== 'function') return false;
+      healTargetCallback = callback;
+      overlay.style.pointerEvents = 'auto';
+      overlay.style.cursor = 'crosshair';
+      return true;
+    },
+    cancelHealTargeting() {
+      stopHealTargeting();
     },
     launchBossAttack(payload) {
       base.resolveBossAttack({ attackType: payload.attackType, damage: 0, dodgedPlayerIds: [] });
@@ -521,12 +584,15 @@ export function createRaidBattlefield(options = {}) {
     complete(outcome) {
       input.left = false;
       input.right = false;
+      stopHealTargeting();
       base.complete(outcome);
       if (outcome === 'wipe') dispatch('mathraids:raidwipe', {});
     },
     destroy() {
       running = false;
+      stopHealTargeting();
       resizeObserver.disconnect();
+      overlay.removeEventListener('pointerdown', selectHealTarget);
       window.removeEventListener('keydown', blockKnockedOutKeyboard, true);
       window.removeEventListener('keyup', blockKnockedOutKeyboard, true);
       window.removeEventListener('keydown', trackKeyDown);
