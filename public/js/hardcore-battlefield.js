@@ -11,6 +11,9 @@ const GRAVITY = 1500;
 const REMOTE_LERP = 18;
 const REMOTE_JUMP_MS = 720;
 const FORTIFY_RADIUS_PCT = 12;
+const DEATH_FALL_MS = 680;
+const PLAYER_W = 24;
+const PLAYER_H = 30;
 const MOVEMENT_KEYS = new Set(['a', 'd', 'w', 'arrowleft', 'arrowright', 'arrowup', ' ']);
 
 function clamp(value, min, max) {
@@ -19,6 +22,16 @@ function clamp(value, min, max) {
 
 function pctToX(value) {
   return clamp((Number(value) / 100) * WIDTH, MIN_X, MAX_X);
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
 }
 
 export function createRaidBattlefield(options = {}) {
@@ -32,6 +45,18 @@ export function createRaidBattlefield(options = {}) {
   let lastFrameAt = performance.now();
   const input = { left: false, right: false };
   const players = new Map();
+  const deathArt = { dps: null, healer: null };
+
+  Promise.all([
+    loadImage('/art/player-dps.svg'),
+    loadImage('/art/player-healer.svg')
+  ]).then(([dps, healer]) => {
+    deathArt.dps = dps;
+    deathArt.healer = healer;
+  }).catch(() => {
+    // The normal battlefield art remains authoritative. If these optional
+    // copies fail to load, the knockout animation falls back to a silhouette.
+  });
 
   const base = createBaseBattlefield({
     ...options,
@@ -95,10 +120,12 @@ export function createRaidBattlefield(options = {}) {
     let entry = players.get(player.id);
     if (!entry) {
       const x = pctToX(player.x ?? 50);
+      const startsOut = Boolean(player.knockedOut);
       entry = {
         id: player.id,
         name: player.name || 'Raider',
         class: player.class || 'dps',
+        facing: player.facing === 'left' ? 'left' : 'right',
         x,
         targetX: x,
         serverX: x,
@@ -109,7 +136,8 @@ export function createRaidBattlefield(options = {}) {
         remoteJumpDuration: REMOTE_JUMP_MS,
         health: Number(player.health) || 100,
         maxHealth: Number(player.maxHealth) || 100,
-        knockedOut: Boolean(player.knockedOut),
+        knockedOut: startsOut,
+        knockedOutAt: startsOut ? performance.now() - DEATH_FALL_MS : 0,
         fortifyUntil: Number(player.fortifyUntil) || 0,
         guardFlashUntil: 0,
         dazedUntil: 0,
@@ -118,17 +146,21 @@ export function createRaidBattlefield(options = {}) {
       players.set(player.id, entry);
     }
 
+    const wasKnockedOut = entry.knockedOut;
     entry.name = player.name || entry.name;
     entry.class = player.class || entry.class;
+    entry.facing = player.facing === 'left' ? 'left' : player.facing === 'right' ? 'right' : entry.facing;
     entry.health = Number.isFinite(Number(player.health)) ? Number(player.health) : entry.health;
     entry.maxHealth = Number.isFinite(Number(player.maxHealth)) ? Number(player.maxHealth) : entry.maxHealth;
     entry.knockedOut = Boolean(player.knockedOut);
+    if (!wasKnockedOut && entry.knockedOut) entry.knockedOutAt = performance.now();
+    if (wasKnockedOut && !entry.knockedOut) entry.knockedOutAt = 0;
     entry.fortifyUntil = Number(player.fortifyUntil) || entry.fortifyUntil || 0;
     return entry;
   }
 
   function applyRemoteAirborne(entry, airborneUntil) {
-    if (!entry || entry.id === localPlayerId) return;
+    if (!entry || entry.id === localPlayerId || entry.knockedOut) return;
     const until = Number(airborneUntil) || 0;
     const remaining = until - Date.now();
     if (remaining <= 0) {
@@ -170,6 +202,14 @@ export function createRaidBattlefield(options = {}) {
     dispatch('mathraids:hardcorestate', { state: serverState, localPlayer: local || null });
   }
 
+  function baseVisibleState(serverState) {
+    if (!serverState || !hardcore) return serverState;
+    return {
+      ...serverState,
+      players: (serverState.players || []).filter((player) => !player.knockedOut)
+    };
+  }
+
   function resizeOverlay() {
     const rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -198,7 +238,7 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function updateLocal(entry, dt) {
-    if (!entry || localKnockedOut || entry.dazedUntil > Date.now()) return;
+    if (!entry || localKnockedOut || entry.knockedOut || entry.dazedUntil > Date.now()) return;
     const axis = input.left === input.right ? 0 : input.left ? -1 : 1;
     if (axis) entry.x = clamp(entry.x + axis * RUN_SPEED * dt, MIN_X, MAX_X);
 
@@ -214,6 +254,7 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function updateRemote(entry, dt, now) {
+    if (entry.knockedOut) return;
     entry.x += (entry.targetX - entry.x) * Math.min(1, REMOTE_LERP * dt);
     if (!entry.remoteJumpStart) return;
     const t = (now - entry.remoteJumpStart) / entry.remoteJumpDuration;
@@ -248,37 +289,102 @@ export function createRaidBattlefield(options = {}) {
     ctx.stroke();
   }
 
-  function drawHealth(entry, now) {
+  function healthBarOffsets() {
+    const entries = [...players.values()];
+    const local = entries.find((entry) => entry.id === localPlayerId);
+    const placementOrder = local
+      ? [local, ...entries.filter((entry) => entry.id !== localPlayerId).sort((a, b) => a.x - b.x)]
+      : entries.sort((a, b) => a.x - b.x);
+    const placed = [];
+    const offsets = new Map();
+
+    for (const entry of placementOrder) {
+      let offset = 0;
+      while (placed.some((item) => Math.abs(item.x - entry.x) < 34 && Math.abs(item.y - (entry.y - 40 - offset)) < 7)) {
+        offset += 7;
+      }
+      offsets.set(entry.id, offset);
+      placed.push({ x: entry.x, y: entry.y - 40 - offset });
+    }
+    return offsets;
+  }
+
+  function drawHealth(entry, now, offset = 0, isLocal = false) {
     if (!hardcore) return;
-    const barWidth = entry.class === 'tank' ? 48 : 42;
-    const barHeight = 5;
+    const barWidth = entry.class === 'tank' ? 34 : 30;
+    const barHeight = 3;
     const x = entry.x - barWidth / 2;
-    const y = entry.y - 43;
+    const y = entry.y - 40 - offset;
     const ratio = clamp(entry.health / Math.max(1, entry.maxHealth), 0, 1);
 
     if (entry.guardFlashUntil > now) {
       ctx.save();
       ctx.shadowColor = entry.class === 'tank' ? '#9de4ff' : '#70caff';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 8;
       ctx.strokeStyle = '#d7f5ff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x - 3, y - 3, barWidth + 6, barHeight + 6);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - 2, y - 2, barWidth + 4, barHeight + 4);
       ctx.restore();
     }
 
-    ctx.fillStyle = 'rgba(4,9,16,.90)';
+    ctx.fillStyle = 'rgba(4,9,16,.92)';
     ctx.fillRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
-    ctx.fillStyle = entry.knockedOut ? '#4e5664' : ratio > 0.55 ? '#62d98a' : ratio > 0.25 ? '#ffc85d' : '#ff6477';
-    ctx.fillRect(x, y, barWidth * ratio, barHeight);
-    ctx.strokeStyle = entry.class === 'tank' ? '#8ed7ff' : 'rgba(255,255,255,.65)';
-    ctx.lineWidth = 1;
+
+    if (ratio > 0) {
+      const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
+      gradient.addColorStop(0, '#ef4f62');
+      gradient.addColorStop(0.52, '#ffcf58');
+      gradient.addColorStop(1, '#71e38a');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, y, barWidth * ratio, barHeight);
+    }
+
+    ctx.strokeStyle = isLocal
+      ? '#f4fbff'
+      : entry.class === 'tank'
+        ? '#8ed7ff'
+        : 'rgba(255,255,255,.55)';
+    ctx.lineWidth = isLocal ? 1.35 : 0.8;
     ctx.strokeRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
 
-    ctx.font = '700 8px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = entry.knockedOut ? '#ff9cab' : '#f4fbff';
-    const role = entry.class === 'tank' ? '🛡 ' : entry.class === 'healer' ? '✦ ' : '';
-    ctx.fillText(entry.knockedOut ? `${role}OUT` : `${role}${Math.ceil(entry.health)}`, entry.x, y - 4);
+    if (isLocal) {
+      ctx.font = '800 6.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(4,9,16,.95)';
+      ctx.lineWidth = 2;
+      ctx.strokeText(entry.knockedOut ? 'YOU · OUT' : 'YOU', entry.x, y - 3);
+      ctx.fillText(entry.knockedOut ? 'YOU · OUT' : 'YOU', entry.x, y - 3);
+    }
+  }
+
+  function drawKnockedOut(entry, now) {
+    if (!entry.knockedOut) return;
+    const startedAt = entry.knockedOutAt || (now - DEATH_FALL_MS);
+    const raw = clamp((now - startedAt) / DEATH_FALL_MS, 0, 1);
+    const eased = 1 - Math.pow(1 - raw, 3);
+    const direction = entry.x < WIDTH / 2 ? -1 : 1;
+    const angle = direction * (Math.PI / 2) * eased;
+    const x = entry.x + direction * 7 * eased;
+    const y = Math.min(GROUND_Y + 4, entry.y + 10 * eased);
+    const image = entry.class === 'healer' ? deathArt.healer : deathArt.dps;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    if (entry.facing === 'left') ctx.scale(-1, 1);
+    ctx.globalAlpha = 1 - eased * 0.18;
+
+    if (image) {
+      ctx.drawImage(image, -PLAYER_W / 2, -PLAYER_H, PLAYER_W, PLAYER_H);
+    } else {
+      ctx.fillStyle = entry.class === 'healer' ? '#65d78f' : entry.class === 'tank' ? '#78bfff' : '#6da9ff';
+      ctx.fillRect(-5, -23, 10, 20);
+      ctx.beginPath();
+      ctx.arc(0, -26, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function drawOverlay(now) {
@@ -290,7 +396,13 @@ export function createRaidBattlefield(options = {}) {
     ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
 
     for (const entry of players.values()) drawFortify(entry, now);
-    for (const entry of players.values()) drawHealth(entry, now);
+    for (const entry of players.values()) drawKnockedOut(entry, now);
+
+    const offsets = healthBarOffsets();
+    const remotes = [...players.values()].filter((entry) => entry.id !== localPlayerId);
+    for (const entry of remotes) drawHealth(entry, now, offsets.get(entry.id) || 0, false);
+    const local = players.get(localPlayerId);
+    if (local) drawHealth(local, now, offsets.get(local.id) || 0, true);
   }
 
   function frame(now) {
@@ -345,21 +457,22 @@ export function createRaidBattlefield(options = {}) {
       base.setLocalPlayerId(id);
     },
     syncState(serverState) {
-      base.syncState(serverState);
       syncOverlayState(serverState);
+      base.syncState(baseVisibleState(serverState));
     },
     movePlayer(id, x, facing, airborneUntil) {
-      base.movePlayer(id, x, facing, airborneUntil);
       const entry = players.get(id);
-      if (entry && id !== localPlayerId) {
+      if (entry) entry.facing = facing === 'left' ? 'left' : facing === 'right' ? 'right' : entry.facing;
+      if (!entry?.knockedOut) base.movePlayer(id, x, facing, airborneUntil);
+      if (entry && id !== localPlayerId && !entry.knockedOut) {
         entry.targetX = pctToX(x);
         applyRemoteAirborne(entry, airborneUntil);
       }
     },
     jumpPlayer(id, airborneUntil) {
-      base.jumpPlayer(id, airborneUntil);
       const entry = players.get(id);
-      if (entry && id !== localPlayerId) applyRemoteAirborne(entry, airborneUntil);
+      if (!entry?.knockedOut) base.jumpPlayer(id, airborneUntil);
+      if (entry && id !== localPlayerId && !entry.knockedOut) applyRemoteAirborne(entry, airborneUntil);
     },
     playerSpecial(payload) {
       base.playerSpecial(payload);
