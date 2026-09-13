@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Create a Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/host.css">
 </head>
 <body>
   <header class="shell site-header">
@@ -13,12 +14,46 @@
   </header>
 
   <main class="shell">
-    <section class="card form-card">
+    <section class="card form-card" style="max-width:820px">
       <div class="eyebrow">Host console</div>
       <h1 style="font-size:clamp(2.5rem,7vw,4.5rem)">Create a raid</h1>
-      <p>Choose the maths challenge and start a shared raid for your group. It works for classrooms, families, tutoring, training sessions and other group play.</p>
+      <p>Choose how punishing the raid should be, then configure the maths challenge and boss.</p>
 
       <form id="create-raid-form">
+        <div class="form-row">
+          <label>Choose raid mode</label>
+          <div class="mode-choice-grid" role="radiogroup" aria-label="Raid mode">
+            <label class="mode-choice">
+              <input type="radio" name="mode" value="ranked" checked>
+              <span class="mode-choice-card">
+                <span class="mode-choice-icon" aria-hidden="true">🛡️</span>
+                <span class="mode-choice-title">Normal Raid</span>
+                <span class="mode-choice-copy">A forgiving group experience with shared raid health. Great for first attempts, younger groups and casual play.</span>
+                <span class="mode-choice-tags">
+                  <span class="mode-choice-tag">Shared health</span>
+                  <span class="mode-choice-tag">No knockouts</span>
+                  <span class="mode-choice-tag">Beginner friendly</span>
+                </span>
+              </span>
+            </label>
+
+            <label class="mode-choice hardcore">
+              <input type="radio" name="mode" value="hardcore">
+              <span class="mode-choice-card">
+                <span class="mode-choice-icon" aria-hidden="true">💀</span>
+                <span class="mode-choice-title">Hardcore Raid</span>
+                <span class="mode-choice-copy">Every player has their own health. Dodge, heal and stack on Tanks. If the whole group is knocked out, the raid wipes.</span>
+                <span class="mode-choice-tags">
+                  <span class="mode-choice-tag">Individual HP</span>
+                  <span class="mode-choice-tag">Knockouts</span>
+                  <span class="mode-choice-tag">Raid wipes</span>
+                  <span class="mode-choice-tag">Tank mechanics</span>
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
         <div class="form-row">
           <label for="topic">Maths category</label>
           <select id="topic" name="topic">
@@ -38,17 +73,7 @@
             <option value="3">Level 3 - advanced</option>
             <option value="4">Level 4 - challenge</option>
           </select>
-          <div class="form-hint">Everyone uses the same band in Ranked and Hardcore raids so the group shares one challenge level.</div>
-        </div>
-
-        <div class="form-row">
-          <label for="mode">Raid mode</label>
-          <select id="mode" name="mode">
-            <option value="ranked" selected>Ranked Raid - shared group health</option>
-            <option value="hardcore">Hardcore Raid - individual health and raid wipes</option>
-            <option value="individual" disabled>Individual Mode - coming later</option>
-          </select>
-          <div class="form-hint">Hardcore players can be knocked out by boss attacks. If every player is down, the raid wipes.</div>
+          <div class="form-hint">Everyone uses the same band so the group shares one challenge level.</div>
         </div>
 
         <div class="form-row">
