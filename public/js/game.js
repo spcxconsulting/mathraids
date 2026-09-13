@@ -41,12 +41,36 @@ let raidComplete = false;
 let raidRunning = false;
 let reconnectTimer;
 let latestState;
+
+function rolePowerProfile(playerClass = join?.class) {
+  if (playerClass === 'healer') {
+    return {
+      ability: 'renewal_burst',
+      abilityName: 'Renewal Burst',
+      description: '5 correct in a row charges a group heal and boss strike.'
+    };
+  }
+  if (playerClass === 'tank') {
+    return {
+      ability: 'fortify',
+      abilityName: 'Fortify',
+      description: '5 correct in a row restores Tank health and lands a smaller boss strike.'
+    };
+  }
+  return {
+    ability: 'power_shot',
+    abilityName: 'Power Shot',
+    description: '5 correct in a row charges a heavy boss strike.'
+  };
+}
+
+const initialPower = rolePowerProfile();
 let power = {
   streak: 0,
   threshold: 5,
   ready: false,
-  ability: join?.class === 'healer' ? 'renewal_burst' : 'power_shot',
-  abilityName: join?.class === 'healer' ? 'Renewal Burst' : 'Power Shot'
+  ability: initialPower.ability,
+  abilityName: initialPower.abilityName
 };
 
 const battlefield = createRaidBattlefield({
@@ -61,13 +85,14 @@ setupMovementButtons();
 connect();
 
 function configurePowerUi() {
+  const profile = rolePowerProfile();
   const healer = join?.class === 'healer';
+  const tank = join?.class === 'tank';
   powerPanel.classList.toggle('healer', healer);
-  powerName.textContent = healer ? 'Renewal Burst' : 'Power Shot';
-  specialLabel.textContent = healer ? 'Use Renewal Burst' : 'Use Power Shot';
-  powerDescription.textContent = healer
-    ? '5 correct in a row charges a raid heal and boss strike.'
-    : '5 correct in a row charges a heavy boss strike.';
+  powerPanel.classList.toggle('tank', tank);
+  powerName.textContent = profile.abilityName;
+  specialLabel.textContent = `Use ${profile.abilityName}`;
+  powerDescription.textContent = profile.description;
   renderPower();
 }
 
@@ -183,9 +208,13 @@ function handleMessage(payload) {
 
   if (payload.type === 'special_result') {
     feedback.className = 'feedback good';
-    feedback.textContent = payload.healing > 0
-      ? `${payload.abilityName}! +${payload.healing} raid healing and ${payload.damage} boss damage.`
-      : `${payload.abilityName}! ${payload.damage} boss damage.`;
+    if (join?.class === 'tank' && payload.ability === 'fortify') {
+      feedback.textContent = `Fortify! +${payload.healing} HP and ${payload.damage} boss damage.`;
+    } else {
+      feedback.textContent = payload.healing > 0
+        ? `${payload.abilityName}! +${payload.healing} healing and ${payload.damage} boss damage.`
+        : `${payload.abilityName}! ${payload.damage} boss damage.`;
+    }
     return;
   }
 
@@ -219,15 +248,41 @@ function handleMessage(payload) {
     battlefield.resolveBossAttack(payload);
     const hit = (payload.hitPlayerIds || []).includes(playerId);
     const dodged = (payload.dodgedPlayerIds || []).includes(playerId);
-    feedback.className = hit ? 'feedback bad' : 'feedback good';
-    feedback.textContent = payload.damage === 0
-      ? 'Perfect raid dodge! No damage taken.'
-      : hit
-        ? `You were caught by the attack. Raid takes ${payload.damage} damage.`
+    const guarded = (payload.protectedPlayerIds || []).includes(playerId);
+    const guarding = (payload.guardTankIds || []).includes(playerId);
+
+    if (guarded) {
+      feedback.className = 'feedback good';
+      feedback.textContent = 'Tank guarded you! The hit was heavily reduced.';
+    } else if (guarding) {
+      const protectedCount = (payload.protectedPlayerIds || []).length;
+      feedback.className = 'feedback good';
+      feedback.textContent = `Guard! You protected ${protectedCount} teammate${protectedCount === 1 ? '' : 's'} and absorbed extra damage.`;
+    } else if (payload.hardcore) {
+      feedback.className = hit ? 'feedback bad' : 'feedback good';
+      feedback.textContent = hit
+        ? `You were hit for ${payload.damage} damage.`
         : dodged
-          ? `Dodged! Raid takes ${payload.damage} damage.`
-          : `Raid takes ${payload.damage} damage.`;
+          ? 'Dodged! No damage taken.'
+          : 'Boss attack resolved.';
+    } else {
+      feedback.className = hit ? 'feedback bad' : 'feedback good';
+      feedback.textContent = payload.damage === 0
+        ? 'Perfect raid dodge! No damage taken.'
+        : hit
+          ? `You were caught by the attack. Raid takes ${payload.damage} damage.`
+          : dodged
+            ? `Dodged! Raid takes ${payload.damage} damage.`
+            : `Raid takes ${payload.damage} damage.`;
+    }
     battlefieldStatus.textContent = feedback.textContent;
+    return;
+  }
+
+  if (payload.type === 'player_knocked_out') {
+    feedback.className = 'feedback bad';
+    feedback.textContent = 'You are knocked out for this attempt. Watch the rest of the raid.';
+    disableAnswers();
     return;
   }
 
@@ -257,11 +312,17 @@ function handleMessage(payload) {
     }
 
     questionCategory.textContent = 'Raid complete';
-    questionText.textContent = payload.outcome === 'victory' ? `${payload.state?.boss?.name || 'Boss'} defeated!` : 'The raid was defeated';
+    questionText.textContent = payload.outcome === 'victory'
+      ? `${payload.state?.boss?.name || 'Boss'} defeated!`
+      : payload.outcome === 'wipe'
+        ? 'RAID WIPE'
+        : 'The raid was defeated';
     feedback.className = payload.outcome === 'victory' ? 'feedback good' : 'feedback bad';
     feedback.textContent = payload.outcome === 'victory'
       ? 'Victory! The host has the private group report.'
-      : 'Good attempt. The host can start another raid.';
+      : payload.outcome === 'wipe'
+        ? 'The whole group was knocked out. Reset and try the raid again.'
+        : 'Good attempt. The host can start another raid.';
     battlefieldStatus.textContent = feedback.textContent;
   }
 }
@@ -273,10 +334,6 @@ function startVictorySequence(state) {
   buildConfetti();
   victoryCelebration?.classList.add('active');
   victoryCelebration?.setAttribute('aria-hidden', 'false');
-
-  // BossPresentation now owns the full defeat timeline, so start the cinematic
-  // immediately. Numberzilla sinks behind the skyline for the configured
-  // bossFallMs instead of pausing and then performing a short fixed drop.
   battlefield.complete('victory');
 
   for (const delay of [300, 1250, 2200]) {
@@ -315,6 +372,8 @@ function updatePower(nextPower) {
   if (!nextPower) return;
   power = { ...power, ...nextPower };
   battlefield.setLocalPowerReady(Boolean(power.ready));
+  powerName.textContent = power.abilityName || rolePowerProfile().abilityName;
+  specialLabel.textContent = `Use ${power.abilityName || rolePowerProfile().abilityName}`;
   renderPower();
 }
 
@@ -331,10 +390,8 @@ function renderPower() {
 
   if (power.ready) {
     powerDescription.textContent = `${power.abilityName} is charged. Use it when you are ready.`;
-  } else if (join?.class === 'healer') {
-    powerDescription.textContent = '5 correct in a row charges a raid heal and boss strike.';
   } else {
-    powerDescription.textContent = '5 correct in a row charges a heavy boss strike.';
+    powerDescription.textContent = rolePowerProfile().description;
   }
 }
 
@@ -358,9 +415,10 @@ function updateState(state) {
   raidHealthBar.style.width = `${Math.max(0, raidPercent)}%`;
 
   const dodgeText = state.team?.dodgeRate > 0 ? ` · ${state.team.dodgeRate}% dodge rate` : '';
+  const aliveText = state.hardcore ? ` · ${state.alivePlayers || 0}/${state.players?.length || 0} standing` : '';
   teamStats.textContent = inLobby
     ? `${state.players?.length || 0} raiders assembling`
-    : `${state.team?.questions || 0} questions · ${state.players?.length || 0} raiders${dodgeText}`;
+    : `${state.team?.questions || 0} questions · ${state.players?.length || 0} raiders${aliveText}${dodgeText}`;
 
   if (state.pendingAttack && state.pendingAttack.executeAt > Date.now()) {
     battlefield.showTelegraph(state.pendingAttack);
@@ -368,12 +426,14 @@ function updateState(state) {
 
   if (inLobby) {
     currentQuestion = null;
-    questionCategory.textContent = 'Waiting area';
+    questionCategory.textContent = state.hardcore ? 'Hardcore staging area' : 'Waiting area';
     questionText.textContent = 'Explore while everyone joins';
     answersEl.replaceChildren();
     if (!feedback.classList.contains('bad')) {
       feedback.className = 'feedback';
-      feedback.textContent = 'Move around, jump, and get ready for the host to start the raid.';
+      feedback.textContent = state.hardcore
+        ? 'Hardcore mode: dodge attacks, protect teammates and avoid a raid wipe.'
+        : 'Move around, jump, and get ready for the host to start the raid.';
     }
     battlefieldStatus.textContent = 'Raid staging area. Players can move and jump while waiting for the host.';
   } else if (state.status === 'running') {
@@ -389,9 +449,13 @@ function renderQuestion(question) {
   questionCategory.textContent = `${titleCase(question.category)} · Level ${question.difficulty}`;
   questionText.textContent = question.prompt;
   feedback.className = 'feedback';
-  feedback.textContent = join.class === 'healer'
-    ? 'Correct answers cast a heal and still damage Numberzilla.'
-    : 'Correct answers launch an attack at Numberzilla.';
+  if (join.class === 'healer') {
+    feedback.textContent = 'Correct answers restore an injured teammate and still damage the boss.';
+  } else if (join.class === 'tank') {
+    feedback.textContent = 'Correct answers deal reduced damage. Stack with teammates during attacks to Guard them.';
+  } else {
+    feedback.textContent = 'Correct answers launch an attack at the boss.';
+  }
   answersEl.replaceChildren();
 
   for (const choice of question.choices) {
@@ -417,9 +481,13 @@ function handleAnswerResult(result) {
   if (result.correct) {
     if (selected) selected.classList.add('correct');
     feedback.className = 'feedback good';
-    feedback.textContent = join.class === 'healer'
-      ? `Correct! +${result.healing} raid healing and ${result.damage} boss damage.`
-      : `Correct! ${result.damage} boss damage.`;
+    if (join.class === 'healer') {
+      feedback.textContent = `Correct! +${result.healing} healing and ${result.damage} boss damage.`;
+    } else if (join.class === 'tank') {
+      feedback.textContent = `Correct! ${result.damage} boss damage. Stay ready to Guard the group.`;
+    } else {
+      feedback.textContent = `Correct! ${result.damage} boss damage.`;
+    }
   } else {
     if (selected) selected.classList.add('wrong');
     feedback.className = 'feedback bad';
@@ -452,9 +520,9 @@ function send(payload) {
 }
 
 function telegraphText(type) {
-  if (type === 'left_slam') return 'Boss attack warning: left side danger. Move right.';
-  if (type === 'right_slam') return 'Boss attack warning: right side danger. Move left.';
-  return 'Boss attack warning: shockwave incoming. Jump.';
+  if (type === 'left_slam') return 'Boss attack warning: left side danger. Move right or stack on a Tank if you cannot escape.';
+  if (type === 'right_slam') return 'Boss attack warning: right side danger. Move left or stack on a Tank if you cannot escape.';
+  return 'Boss attack warning: shockwave incoming. Jump, or stack tightly on a Tank to reduce the hit.';
 }
 
 function titleCase(value) {
