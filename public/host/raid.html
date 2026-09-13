@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Raid Host - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/host.css">
 </head>
 <body>
   <header class="shell site-header">
@@ -42,10 +43,49 @@
           </div>
         </section>
 
-        <section class="card" id="boss-tuning-card">
-          <div class="eyebrow">Boss tuning</div>
-          <h2>Encounter settings</h2>
-          <p class="small muted">Tune the boss before the raid starts. These settings are saved with this raid.</p>
+        <section class="card custom-rules-panel" id="custom-rules-card" hidden>
+          <div class="eyebrow">Custom raid</div>
+          <h2>Raid rules</h2>
+          <p class="small muted">Custom raids are sandbox sessions. They do not award achievements, progression or loot.</p>
+          <div class="grid grid-2">
+            <div class="form-row">
+              <label for="custom-health-mode-host">Health model</label>
+              <select id="custom-health-mode-host">
+                <option value="shared">Shared raid health</option>
+                <option value="individual">Individual player health</option>
+              </select>
+            </div>
+            <label class="custom-toggle">
+              <input id="custom-knockouts-host" type="checkbox">
+              <span><strong>Knockouts + raid wipe</strong><small>With individual health, players can be knocked out and the raid wipes if everyone falls.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input id="custom-tank-guard-host" type="checkbox">
+              <span><strong>Tank Guard</strong><small>Nearby Tanks reduce damage for teammates caught in the same attack.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input id="custom-fortify-host" type="checkbox">
+              <span><strong>Tank Fortify</strong><small>Allows the Tank defensive special and protective bubble.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input id="custom-jump-fatigue-host" type="checkbox">
+              <span><strong>Jump fatigue</strong><small>Rapid jumps fall from full height to half height, then quarter height, followed by a recovery lock.</small></span>
+            </label>
+            <label class="custom-toggle">
+              <input id="custom-airborne-mitigation-host" type="checkbox">
+              <span><strong>Airborne damage reduction</strong><small>Jumping reduces damage from attacks that still connect. Shockwaves can still be dodged entirely.</small></span>
+            </label>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" id="save-custom-rules" type="button">Save raid rules</button>
+            <span class="small muted" id="custom-rules-status">Rules can be changed until the raid starts.</span>
+          </div>
+        </section>
+
+        <section class="card" id="boss-tuning-card" hidden>
+          <div class="eyebrow">Custom raid</div>
+          <h2>Boss tuning</h2>
+          <p class="small muted">Tune the encounter before the raid starts. Normal and Hardcore raids use their curated boss settings.</p>
           <div class="grid grid-2">
             <div class="form-row">
               <label for="boss-health-per-player">Health per player</label>
@@ -64,7 +104,7 @@
             <div class="form-row">
               <label for="boss-attack-power">Attack power <span id="boss-attack-power-label" class="muted small">3 / 5</span></label>
               <input id="boss-attack-power" type="range" min="1" max="5" step="1" value="3">
-              <div class="form-hint">Controls how much shared raid health is lost when players are hit.</div>
+              <div class="form-hint">Controls how hard boss attacks hit.</div>
             </div>
             <div class="form-row">
               <label for="boss-warning-ms">Attack warning</label>
@@ -79,7 +119,7 @@
           </div>
           <div class="actions">
             <button class="btn btn-primary" id="save-boss-tuning" type="button">Save boss tuning</button>
-            <span class="small muted" id="boss-tuning-status">Uses the Numberzilla defaults until changed.</span>
+            <span class="small muted" id="boss-tuning-status">Uses the encounter defaults until changed.</span>
           </div>
         </section>
 
