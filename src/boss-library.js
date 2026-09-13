@@ -165,9 +165,9 @@ export async function deleteBossTemplate(env, id) {
   const existing = await env.BOSS_ASSETS.get(definitionKey);
   if (!existing) return false;
 
-  const assets = await env.BOSS_ASSETS.list({ prefix: `${ASSET_PREFIX}${id}/`, limit: 100 });
-  const keys = assets.objects.map((object) => object.key);
-  if (keys.length) await env.BOSS_ASSETS.delete(keys);
+  // Remove the template from the selectable library, but retain its immutable
+  // artwork so raid rooms that already snapshotted this definition continue to
+  // render correctly. Orphan cleanup can be added later with raid retention.
   await env.BOSS_ASSETS.delete(definitionKey);
   return true;
 }
