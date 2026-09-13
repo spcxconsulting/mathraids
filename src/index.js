@@ -1,4 +1,13 @@
 import { RaidRoom } from './raid-room-impact.js';
+import {
+  bossLibraryAvailable,
+  bossWriteAuthorised,
+  createBossTemplate,
+  deleteBossTemplate,
+  getBossFromLibrary,
+  listBosses,
+  serveBossAsset
+} from './boss-library.js';
 
 export { RaidRoom };
 
@@ -31,11 +40,46 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'mathraids', version: '0.1.0' });
+      return json({
+        ok: true,
+        service: 'mathraids',
+        version: '0.1.0',
+        bossLibrary: bossLibraryAvailable(env)
+      });
+    }
+
+    if (url.pathname === '/api/bosses' && request.method === 'GET') {
+      return json({ bosses: await listBosses(env) });
+    }
+
+    if (url.pathname === '/api/bosses' && request.method === 'POST') {
+      if (!bossLibraryAvailable(env)) return json({ error: 'Boss asset storage is not configured.' }, 503);
+      if (!bossWriteAuthorised(request, env)) return json({ error: 'Boss Library key is required.' }, 403);
+      try {
+        const boss = await createBossTemplate(request, env);
+        return json({ boss }, 201);
+      } catch (error) {
+        return json({ error: error.message || 'Could not create boss template.' }, 400);
+      }
+    }
+
+    const deleteBossMatch = url.pathname.match(/^\/api\/bosses\/(custom-[a-z0-9-]+)$/);
+    if (deleteBossMatch && request.method === 'DELETE') {
+      if (!bossWriteAuthorised(request, env)) return json({ error: 'Boss Library key is required.' }, 403);
+      const deleted = await deleteBossTemplate(env, deleteBossMatch[1]);
+      return deleted ? json({ ok: true }) : json({ error: 'Boss template not found.' }, 404);
+    }
+
+    const bossAssetMatch = url.pathname.match(/^\/api\/boss-assets\/(custom-[a-z0-9-]+\/(?:idle|attack)\.(?:png|jpg|webp))$/);
+    if (bossAssetMatch && request.method === 'GET') {
+      return serveBossAsset(env, bossAssetMatch[1]);
     }
 
     if (url.pathname === '/api/raids' && request.method === 'POST') {
       const body = await request.json().catch(() => ({}));
+      const bossId = String(body.boss || 'numberzilla');
+      const bossDefinition = await getBossFromLibrary(env, bossId);
+      if (!bossDefinition) return json({ error: 'Selected boss was not found.' }, 400);
 
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const code = createCode();
@@ -46,7 +90,8 @@ export default {
           body: JSON.stringify({
             code,
             mode: body.mode || 'ranked',
-            boss: body.boss || 'numberzilla',
+            boss: bossId,
+            bossDefinition,
             topic: body.topic || 'multiplication',
             difficulty: body.difficulty || 2
           })
