@@ -60,7 +60,8 @@
   touch-action: none;
 }
 
-.victory-celebration {
+.victory-celebration,
+.wipe-screen {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -70,7 +71,8 @@
   transition: opacity .55s ease;
 }
 
-.victory-celebration.active { opacity: 1; }
+.victory-celebration.active,
+.wipe-screen.active { opacity: 1; }
 
 .victory-glow {
   position: absolute;
@@ -81,7 +83,8 @@
   animation: victoryGlow 2.4s ease-in-out infinite alternate;
 }
 
-.victory-copy {
+.victory-copy,
+.wipe-copy {
   position: absolute;
   top: 9%;
   left: 50%;
@@ -95,13 +98,15 @@
   animation: victoryCopyIn .8s .65s cubic-bezier(.2,.8,.2,1) forwards;
 }
 
-.victory-kicker {
+.victory-kicker,
+.wipe-kicker {
   font-size: clamp(.7rem, 1.5vw, .95rem);
   font-weight: 800;
   letter-spacing: .2em;
   text-transform: uppercase;
-  color: #bfeaff;
 }
+
+.victory-kicker { color: #bfeaff; }
 
 .victory-title {
   margin-top: 2px;
@@ -138,6 +143,52 @@
   animation: confettiFall var(--d) var(--delay) cubic-bezier(.18,.72,.28,1) forwards;
 }
 
+.wipe-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(115,14,24,.10), rgba(5,5,10,.72) 58%, rgba(2,3,8,.94) 100%),
+    linear-gradient(to top, rgba(50,0,8,.54), transparent 48%);
+}
+
+.wipe-copy {
+  top: 50%;
+  transform: translate(-50%, -42%) scale(.94);
+}
+
+.wipe-screen.active .wipe-copy {
+  animation: wipeCopyIn .55s .12s cubic-bezier(.2,.8,.2,1) forwards;
+}
+
+.wipe-kicker { color: #ff9ca8; }
+
+.wipe-title {
+  margin-top: 4px;
+  font-size: clamp(2.8rem, 9vw, 6.8rem);
+  line-height: .9;
+  font-weight: 950;
+  letter-spacing: .04em;
+  color: #ff6075;
+  text-shadow: 0 4px 0 rgba(72,0,10,.85), 0 0 34px rgba(255,36,66,.34);
+}
+
+.wipe-subtitle {
+  margin-top: 14px;
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
+  font-weight: 800;
+  color: #fff0f2;
+  text-shadow: 0 2px 8px rgba(0,0,0,.9);
+}
+
+.wipe-hint {
+  margin: 7px auto 0;
+  max-width: 560px;
+  font-size: clamp(.78rem, 1.7vw, 1rem);
+  font-weight: 650;
+  color: #d9c6ca;
+  text-shadow: 0 2px 8px rgba(0,0,0,.9);
+}
+
 @keyframes victoryGlow {
   from { opacity: .55; transform: scale(1); }
   to { opacity: .95; transform: scale(1.035); }
@@ -145,6 +196,10 @@
 
 @keyframes victoryCopyIn {
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes wipeCopyIn {
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 @keyframes confettiFall {
