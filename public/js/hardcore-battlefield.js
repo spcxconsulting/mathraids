@@ -20,7 +20,6 @@ export function createRaidBattlefield(options = {}) {
     zIndex: '5',
     display: 'none'
   });
-  host.append(overlay);
 
   const koBanner = document.createElement('div');
   koBanner.textContent = 'KNOCKED OUT';
@@ -139,9 +138,6 @@ export function createRaidBattlefield(options = {}) {
     event.stopImmediatePropagation();
   }
 
-  window.addEventListener('keydown', blockKnockedOutKeyboard, true);
-  window.addEventListener('keyup', blockKnockedOutKeyboard, true);
-
   const base = createBaseBattlefield({
     ...options,
     onPosition(position) {
@@ -156,6 +152,12 @@ export function createRaidBattlefield(options = {}) {
       if (!localKnockedOut) options.onJump?.();
     }
   });
+
+  // The base renderer clears its mount during creation, so the Hardcore overlay
+  // must be attached after the base canvas has been installed.
+  host.append(overlay);
+  window.addEventListener('keydown', blockKnockedOutKeyboard, true);
+  window.addEventListener('keyup', blockKnockedOutKeyboard, true);
 
   return {
     ...base,
