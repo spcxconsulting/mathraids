@@ -49,9 +49,9 @@ export function createRaidBattlefield(options = {}) {
       const root = document.createElement('div');
       Object.assign(root.style, {
         position: 'absolute',
-        width: '54px',
+        width: '58px',
         transform: 'translate(-50%, -100%)',
-        transition: 'left 90ms linear, opacity 120ms ease',
+        transition: 'left 90ms linear, opacity 120ms ease, filter 120ms ease',
         textAlign: 'center'
       });
 
@@ -86,7 +86,7 @@ export function createRaidBattlefield(options = {}) {
       track.append(fill);
       root.append(name, track);
       overlay.append(root);
-      entry = { root, name, fill, x: 50 };
+      entry = { root, name, fill, track, x: 50, class: player.class || 'dps' };
       players.set(player.id, entry);
     }
     return entry;
@@ -94,14 +94,38 @@ export function createRaidBattlefield(options = {}) {
 
   function updatePlayer(player) {
     const entry = healthEntry(player);
+    entry.class = player.class || entry.class;
     entry.x = Number.isFinite(Number(player.x)) ? Number(player.x) : entry.x;
     entry.root.style.left = `${entry.x}%`;
     entry.root.style.top = '79%';
-    entry.name.textContent = player.knockedOut ? `${player.name} · OUT` : player.name;
+    const role = entry.class === 'tank' ? '🛡 ' : entry.class === 'healer' ? '✦ ' : '';
+    entry.name.textContent = player.knockedOut ? `${role}${player.name} · OUT` : `${role}${player.name}`;
+    entry.track.style.borderColor = entry.class === 'tank'
+      ? 'rgba(113,197,255,.85)'
+      : 'rgba(255,255,255,.35)';
     const maxHealth = Math.max(1, Number(player.maxHealth) || 100);
     const health = Math.max(0, Number(player.health) || 0);
     entry.fill.style.transform = `scaleX(${Math.min(1, health / maxHealth)})`;
     entry.root.style.opacity = player.knockedOut ? '.48' : '1';
+  }
+
+  function flashGuard(protectedPlayerIds = [], guardTankIds = []) {
+    for (const id of protectedPlayerIds) {
+      const entry = players.get(id);
+      if (!entry) continue;
+      entry.root.style.filter = 'drop-shadow(0 0 6px rgba(99,190,255,.95))';
+      setTimeout(() => { entry.root.style.filter = ''; }, 650);
+    }
+    for (const id of guardTankIds) {
+      const entry = players.get(id);
+      if (!entry) continue;
+      entry.root.style.filter = 'drop-shadow(0 0 9px rgba(122,216,255,1))';
+      entry.track.style.borderColor = '#bfeeff';
+      setTimeout(() => {
+        entry.root.style.filter = '';
+        entry.track.style.borderColor = 'rgba(113,197,255,.85)';
+      }, 750);
+    }
   }
 
   function syncHardcoreState(serverState) {
@@ -153,8 +177,6 @@ export function createRaidBattlefield(options = {}) {
     }
   });
 
-  // The base renderer clears its mount during creation, so the Hardcore overlay
-  // must be attached after the base canvas has been installed.
   host.append(overlay);
   window.addEventListener('keydown', blockKnockedOutKeyboard, true);
   window.addEventListener('keyup', blockKnockedOutKeyboard, true);
@@ -191,6 +213,7 @@ export function createRaidBattlefield(options = {}) {
     resolveBossAttack(payload) {
       base.resolveBossAttack(payload);
       if (payload?.hardcore) {
+        flashGuard(payload.protectedPlayerIds, payload.guardTankIds);
         dispatch('mathraids:hardcoreattack', { payload, localPlayerId });
       }
     },
