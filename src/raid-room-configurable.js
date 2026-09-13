@@ -11,6 +11,9 @@ import {
 } from './bosses.js';
 import { publicQuestion } from './questions.js';
 
+const TANK_GUARD_RADIUS = 9;
+const TANK_GUARD_DAMAGE_MULTIPLIER = 0.3;
+
 function decodeMessage(message) {
   try {
     return JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message));
@@ -86,9 +89,6 @@ export class RaidRoom extends HostRaidRoom {
     this.room.boss.nextAttackAt = null;
     await this.saveRoom();
 
-    // Super.startRaid has already opened the encounter. Broadcast the tuned
-    // values immediately, then arm an independent boss cadence so the boss
-    // does not wait passively for players to reach an answer milestone.
     this.broadcastPublic();
     this.sendTeacherState();
     await this.armNextBossAttack(true);
@@ -137,6 +137,8 @@ export class RaidRoom extends HostRaidRoom {
         damage = 6;
         healing = 4;
         this.room.raidHealth = Math.min(this.room.maxRaidHealth, this.room.raidHealth + healing);
+      } else if (player.class === 'tank') {
+        damage = 6;
       } else {
         damage = 10;
       }
@@ -153,8 +155,6 @@ export class RaidRoom extends HostRaidRoom {
         raidHealth: this.room.raidHealth
       });
 
-      // Fast answering can provoke an earlier mechanic, but it is no longer
-      // the only way the boss attacks. This keeps high-performing groups busy.
       const playerCount = Object.keys(this.room.players).length;
       const attackEvery = attackEveryForAggression(playerCount, this.bossTuning().aggression);
       if (!this.room.pendingAttack && this.room.boss.health > 0 && this.room.team.correct % attackEvery === 0) {
@@ -221,8 +221,6 @@ export class RaidRoom extends HostRaidRoom {
   async alarm() {
     if (!this.room || this.room.status !== 'running') return;
 
-    // An alarm with no active telegraph means the boss's independent cadence
-    // has elapsed. Start the warning now, then use the next alarm to resolve it.
     if (!this.room.pendingAttack) {
       const nextAttackAt = Number(this.room.boss.nextAttackAt) || 0;
       if (!nextAttackAt) {
@@ -255,8 +253,19 @@ export class RaidRoom extends HostRaidRoom {
       else dodgedPlayerIds.push(player.id);
     }
 
+    const hitPlayers = players.filter((player) => hitPlayerIds.includes(player.id));
+    const hitTanks = hitPlayers.filter((player) => player.class === 'tank');
+    const protectedPlayerIds = [];
+    for (const player of hitPlayers) {
+      if (player.class === 'tank') continue;
+      const tank = hitTanks.find((candidate) => Math.abs(candidate.x - player.x) <= TANK_GUARD_RADIUS);
+      if (tank) protectedPlayerIds.push(player.id);
+    }
+
+    const unprotectedHits = Math.max(0, hitPlayerIds.length - protectedPlayerIds.length);
+    const effectiveHits = unprotectedHits + protectedPlayerIds.length * TANK_GUARD_DAMAGE_MULTIPLIER;
     const damage = attackDamageForPower(
-      hitPlayerIds.length,
+      effectiveHits,
       Math.max(1, players.length),
       this.bossTuning().attackPower
     );
@@ -279,6 +288,7 @@ export class RaidRoom extends HostRaidRoom {
       damage,
       hitPlayerIds,
       dodgedPlayerIds,
+      protectedPlayerIds,
       raidHealth: this.room.raidHealth
     });
     this.broadcastPublic();
