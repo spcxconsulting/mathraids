@@ -22,4 +22,18 @@ export class RaidRoom extends ImpactRaidRoom {
 
     return response;
   }
+
+  publicState() {
+    const state = super.publicState();
+    if (!state) return state;
+
+    const definition = this.bossDefinition();
+    state.boss = {
+      ...state.boss,
+      canvas: definition.canvas || { width: 640, height: 360 },
+      attackDefinitions: Array.isArray(definition.attackDefinitions) ? definition.attackDefinitions : [],
+      enrage: definition.enrage || null
+    };
+    return state;
+  }
 }
