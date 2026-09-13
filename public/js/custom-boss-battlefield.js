@@ -106,9 +106,9 @@ export function createRaidBattlefield(options = {}) {
     };
   }
 
-  function attackSpriteState(now) {
+  function attackSpriteState() {
     const type = attackType;
-    if (!type || now > attackUntil || !['left_slam', 'right_slam'].includes(type)) {
+    if (!type || Date.now() > attackUntil || !['left_slam', 'right_slam'].includes(type)) {
       return { image: custom?.idle, flip: false };
     }
 
@@ -162,7 +162,7 @@ export function createRaidBattlefield(options = {}) {
       yOffset = Math.sin(now / 620) * 2.5;
     }
 
-    const sprite = attackSpriteState(now);
+    const sprite = attackSpriteState();
     drawContained(
       sprite.image,
       WIDTH / 2,
@@ -211,7 +211,7 @@ export function createRaidBattlefield(options = {}) {
     },
     resolveBossAttack(payload) {
       attackType = payload?.attackType || attackType;
-      attackUntil = performance.now() + 500;
+      attackUntil = Date.now() + 500;
       base.resolveBossAttack(payload);
     },
     complete(outcome) {
