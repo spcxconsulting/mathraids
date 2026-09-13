@@ -1,11 +1,11 @@
 // Backwards-compatible module name while the rest of the client still imports
 // phaser-battlefield.js. The live renderer is a lightweight high-DPI Canvas2D
-// engine using SVG source artwork, reusable boss presentation states, local
-// player movement, Hardcore health/knockout rendering, and impact-timed boss attacks.
-import { createRaidBattlefield as createHardcoreBattlefield } from './hardcore-battlefield.js';
+// engine with custom boss templates, Hardcore health/knockout rendering, and
+// impact-timed boss attacks.
+import { createRaidBattlefield as createTemplateBattlefield } from './custom-boss-battlefield.js';
 
 export function createRaidBattlefield(options = {}) {
-  const battlefield = createHardcoreBattlefield(options);
+  const battlefield = createTemplateBattlefield(options);
   let launchTimer = null;
   let scheduledAttackId = null;
   let launchedAttackId = null;
