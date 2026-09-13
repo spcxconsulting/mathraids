@@ -30,7 +30,6 @@ export function createRaidBattlefield(options = {}) {
   let localKnockedOut = false;
   let running = true;
   let lastFrameAt = performance.now();
-  let renderScale = 1;
   const input = { left: false, right: false };
   const players = new Map();
 
@@ -57,10 +56,16 @@ export function createRaidBattlefield(options = {}) {
     width: '100%',
     height: '100%',
     pointerEvents: 'none',
-    zIndex: '5'
+    zIndex: '5',
+    display: 'none',
+    background: 'transparent'
   });
   host.append(overlay);
-  const ctx = overlay.getContext('2d', { alpha: true, desynchronized: true });
+
+  // Keep this overlay on the normal compositing path. A transparent
+  // desynchronised canvas can be promoted to an opaque low-latency surface on
+  // some Chromium/GPU combinations, which hides the battlefield underneath.
+  const ctx = overlay.getContext('2d', { alpha: true });
 
   const koBanner = document.createElement('div');
   koBanner.textContent = 'KNOCKED OUT';
@@ -138,6 +143,8 @@ export function createRaidBattlefield(options = {}) {
 
   function syncOverlayState(serverState) {
     hardcore = Boolean(serverState?.hardcore || serverState?.config?.mode === 'hardcore');
+    overlay.style.display = hardcore ? 'block' : 'none';
+
     const ids = new Set((serverState?.players || []).map((player) => player.id));
     for (const id of players.keys()) if (!ids.has(id)) players.delete(id);
 
@@ -169,7 +176,6 @@ export function createRaidBattlefield(options = {}) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     overlay.width = Math.max(1, Math.round(rect.width * dpr));
     overlay.height = Math.max(1, Math.round(rect.height * dpr));
-    renderScale = overlay.width / WIDTH;
   }
 
   const resizeObserver = new ResizeObserver(resizeOverlay);
@@ -276,11 +282,12 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function drawOverlay(now) {
-    if (!overlay.width || !overlay.height) return;
+    if (!hardcore || !overlay.width || !overlay.height) return;
     const scaleX = overlay.width / WIDTH;
     const scaleY = overlay.height / HEIGHT;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
     ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-    ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
     for (const entry of players.values()) drawFortify(entry, now);
     for (const entry of players.values()) drawHealth(entry, now);
