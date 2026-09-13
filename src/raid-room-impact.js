@@ -20,7 +20,7 @@ const JUMP_CHAIN_WINDOW_MS = 2200;
 const JUMP_LOCK_MS = 5000;
 const JUMP_BASE_AIRBORNE_MS = 650;
 const JUMP_BASE_READY_MS = 780;
-const JUMP_HEIGHT_STRENGTHS = [1, 0.92, 0.82, 0.68, 0.52, 0.36];
+const JUMP_HEIGHT_STRENGTHS = [1, 0.5, 0.25];
 const AIRBORNE_DAMAGE_MULTIPLIER = 0.65;
 
 function decodeMessage(message) {
@@ -50,6 +50,15 @@ function jumpTimingForStrength(strength) {
 export class RaidRoom extends HardcoreRaidRoom {
   powerState(player) {
     if (!isTank(player)) return super.powerState(player);
+    if (!this.fortifyEnabled()) {
+      return {
+        streak: 0,
+        threshold: SPECIAL_STREAK,
+        ready: false,
+        ability: 'fortify',
+        abilityName: 'Fortify disabled'
+      };
+    }
     return {
       streak: Math.max(0, Number(player.streak) || 0),
       threshold: SPECIAL_STREAK,
@@ -63,7 +72,7 @@ export class RaidRoom extends HardcoreRaidRoom {
     const event = decodeMessage(message);
     const attachment = ws.deserializeAttachment();
 
-    if (event?.type === 'jump' && attachment?.role === 'student') {
+    if (event?.type === 'jump' && attachment?.role === 'student' && this.jumpFatigueEnabled()) {
       const player = this.room?.players?.[attachment.playerId];
       if (player) await this.handleFatigueJump(ws, player);
       return;
@@ -72,6 +81,10 @@ export class RaidRoom extends HardcoreRaidRoom {
     if (event?.type === 'special' && attachment?.role === 'student') {
       const player = this.room?.players?.[attachment.playerId];
       if (isTank(player)) {
+        if (!this.fortifyEnabled()) {
+          this.safeSend(ws, { type: 'error', message: 'Tank Fortify is disabled for this Custom raid.' });
+          return;
+        }
         await this.handleTankFortify(ws, player);
         return;
       }
@@ -140,7 +153,7 @@ export class RaidRoom extends HardcoreRaidRoom {
   }
 
   async handleTankFortify(ws, player) {
-    if (!this.room || this.room.status !== 'running') return;
+    if (!this.room || this.room.status !== 'running' || !this.fortifyEnabled()) return;
     if (this.isHardcore()) this.ensureHardcorePlayer(player);
     if (player.knockedOut) return;
 
@@ -292,10 +305,12 @@ export class RaidRoom extends HardcoreRaidRoom {
   }
 
   playerAirborneAtImpact(player, attack) {
+    if (!this.airborneMitigationEnabled()) return false;
     return attack.type !== 'shockwave' && (player.airborneUntil || 0) >= attack.impactAt;
   }
 
   activeFortifyTanks(players, impactAt) {
+    if (!this.fortifyEnabled()) return [];
     return players.filter((player) => isTank(player) && (player.fortifyUntil || 0) >= impactAt && !player.knockedOut);
   }
 
@@ -306,6 +321,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       .find((tank) => Math.abs(tank.x - player.x) <= FORTIFY_RADIUS);
     if (fortifiedTank) return { tank: fortifiedTank, type: 'fortify', multiplier: FORTIFY_MULTIPLIER };
 
+    if (!this.tankGuardEnabled()) return null;
     const passiveTank = players.find((tank) =>
       isTank(tank)
       && !tank.knockedOut
@@ -329,6 +345,7 @@ export class RaidRoom extends HardcoreRaidRoom {
     const knockedOutPlayerIds = [];
     const damageByPlayer = {};
     const baseDamage = hardcorePlayerDamageForPower(this.bossTuning().attackPower);
+    const minimumHealth = this.knockoutsEnabled() ? 0 : 1;
 
     for (const player of living) {
       const hit = this.playerHitAtImpact(player, attack);
@@ -359,7 +376,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       }
       const damage = Math.max(1, Math.round(baseDamage * multiplier));
       damageByPlayer[player.id] = damage;
-      player.health = Math.max(0, player.health - damage);
+      player.health = Math.max(minimumHealth, player.health - damage);
 
       if (protection) {
         const prevented = Math.max(0, baseDamage - damage);
@@ -372,7 +389,7 @@ export class RaidRoom extends HardcoreRaidRoom {
 
     for (const tank of living.filter(isTank)) {
       const directlyHit = hitById.get(tank.id);
-      const fortified = (tank.fortifyUntil || 0) >= attack.impactAt;
+      const fortified = this.fortifyEnabled() && (tank.fortifyUntil || 0) >= attack.impactAt;
       const airborne = directlyHit && this.playerAirborneAtImpact(tank, attack);
       const prevented = preventedByTank.get(tank.id) || 0;
       if (!directlyHit && prevented <= 0) continue;
@@ -392,16 +409,18 @@ export class RaidRoom extends HardcoreRaidRoom {
 
       if (tankDamage > 0) {
         damageByPlayer[tank.id] = tankDamage;
-        tank.health = Math.max(0, tank.health - tankDamage);
+        tank.health = Math.max(minimumHealth, tank.health - tankDamage);
       }
       if (fortified && prevented > 0) fortifyTankIds.add(tank.id);
     }
 
-    for (const player of living) {
-      if (player.health <= 0) {
-        player.knockedOut = true;
-        player.currentQuestion = null;
-        knockedOutPlayerIds.push(player.id);
+    if (this.knockoutsEnabled()) {
+      for (const player of living) {
+        if (player.health <= 0) {
+          player.knockedOut = true;
+          player.currentQuestion = null;
+          knockedOutPlayerIds.push(player.id);
+        }
       }
     }
 
@@ -409,7 +428,7 @@ export class RaidRoom extends HardcoreRaidRoom {
     this.room.team.bossHits += hitPlayerIds.length;
     this.room.team.dodges += dodgedPlayerIds.length;
 
-    if (!this.livingPlayers().length && Object.keys(this.room.players).length > 0) {
+    if (this.knockoutsEnabled() && !this.livingPlayers().length && Object.keys(this.room.players).length > 0) {
       await this.finishRaid('wipe');
     }
 
@@ -425,7 +444,8 @@ export class RaidRoom extends HardcoreRaidRoom {
       guardTankIds: [...guardTankIds],
       fortifyTankIds: [...fortifyTankIds],
       knockedOutPlayerIds,
-      hardcore: true,
+      hardcore: this.room.config?.mode === 'hardcore',
+      individualHealth: true,
       impactAt: attack.impactAt
     };
   }
@@ -456,7 +476,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       if (airborneMultiplier < 1) airborneMitigatedPlayerIds.push(player.id);
 
       if (isTank(player)) {
-        const fortified = (player.fortifyUntil || 0) >= attack.impactAt;
+        const fortified = this.fortifyEnabled() && (player.fortifyUntil || 0) >= attack.impactAt;
         effectiveHits += (fortified ? 0.5 : 1) * airborneMultiplier;
         if (fortified) fortifyTankIds.add(player.id);
         continue;
@@ -567,10 +587,11 @@ export class RaidRoom extends HardcoreRaidRoom {
 
     state.tankBubbleRadius = FORTIFY_RADIUS;
     state.jumpFatigue = {
+      enabled: this.jumpFatigueEnabled(),
       chainWindowMs: JUMP_CHAIN_WINDOW_MS,
       lockMs: JUMP_LOCK_MS,
       strengths: JUMP_HEIGHT_STRENGTHS,
-      airborneDamageMultiplier: AIRBORNE_DAMAGE_MULTIPLIER
+      airborneDamageMultiplier: this.airborneMitigationEnabled() ? AIRBORNE_DAMAGE_MULTIPLIER : 1
     };
     state.players = state.players.map((publicPlayer) => {
       const player = this.room.players?.[publicPlayer.id] || {};
