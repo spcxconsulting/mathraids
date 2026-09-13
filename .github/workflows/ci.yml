@@ -27,6 +27,7 @@ jobs:
           node --check src/raid-room-synced.js
           node --check src/raid-room-host.js
           node --check src/raid-room-configurable.js
+          node --check src/raid-room-hardcore.js
           node --check src/questions.js
           node --check public/js/host.js
           node --check public/js/host-raid.js
@@ -34,7 +35,9 @@ jobs:
           node --check public/js/teacher-raid.js
           node --check public/js/join.js
           node --check public/js/game.js
+          node --check public/js/hardcore-ui.js
           node --check public/js/phaser-battlefield.js
+          node --check public/js/hardcore-battlefield.js
           node --check public/js/boss-presentation.js
           node --check public/js/pixel-battlefield.js
           node --check public/js/vector-battlefield.js
