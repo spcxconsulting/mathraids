@@ -138,7 +138,7 @@ export function createRaidBattlefield(options = {}) {
   }
 
   function syncOverlayState(serverState) {
-    hardcore = Boolean(serverState?.hardcore || serverState?.config?.mode === 'hardcore');
+    hardcore = Boolean(serverState?.individualHealth || serverState?.hardcore || serverState?.config?.mode === 'hardcore');
     overlay.style.display = hardcore ? 'block' : 'none';
 
     const ids = new Set((serverState?.players || []).map((player) => player.id));
@@ -458,7 +458,9 @@ export function createRaidBattlefield(options = {}) {
         const entry = players.get(id);
         if (entry) entry.guardFlashUntil = now + 700;
       }
-      if (payload?.hardcore) dispatch('mathraids:hardcoreattack', { payload, localPlayerId });
+      if (payload?.hardcore || payload?.individualHealth) {
+        dispatch('mathraids:hardcoreattack', { payload, localPlayerId });
+      }
     },
     setMoveButton(direction, active) {
       if (hardcore && localKnockedOut) {
