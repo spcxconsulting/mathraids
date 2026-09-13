@@ -12,8 +12,9 @@ const FORTIFY_RADIUS = 12;
 const FORTIFY_MULTIPLIER = 0.10;
 const FORTIFY_DURATION_MS = 5000;
 const FORTIFY_SELF_HEAL = 35;
-const FORTIFY_DAMAGE = 12;
 const SPECIAL_STREAK = 5;
+const TARGETED_HEAL_AMOUNT = 45;
+const TARGETED_HEAL_DAMAGE = 10;
 
 function decodeMessage(message) {
   try {
@@ -49,6 +50,10 @@ export class RaidRoom extends HardcoreRaidRoom {
         await this.handleTankFortify(ws, player);
         return;
       }
+      if (this.isHardcore() && player?.class === 'healer') {
+        await this.handleTargetedHealerSpecial(ws, player, event.targetPlayerId);
+        return;
+      }
     }
 
     return super.webSocketMessage(ws, message);
@@ -75,7 +80,6 @@ export class RaidRoom extends HardcoreRaidRoom {
     player.specialReady = false;
     player.streak = 0;
     player.fortifyUntil = now + FORTIFY_DURATION_MS;
-    this.room.boss.health = Math.max(0, this.room.boss.health - FORTIFY_DAMAGE);
 
     let healing = 0;
     if (this.isHardcore()) {
@@ -90,10 +94,68 @@ export class RaidRoom extends HardcoreRaidRoom {
       class: 'tank',
       ability: 'fortify',
       abilityName: 'Fortify',
-      damage: FORTIFY_DAMAGE,
+      damage: 0,
       healing,
       fortifyUntil: player.fortifyUntil,
       radius: FORTIFY_RADIUS,
+      bossHealth: this.room.boss.health
+    });
+
+    await this.saveRoom();
+    this.sendPowerStateToPlayer(player);
+    this.safeSend(ws, {
+      type: 'special_result',
+      ability: 'fortify',
+      abilityName: 'Fortify',
+      damage: 0,
+      healing,
+      fortifyUntil: player.fortifyUntil,
+      radius: FORTIFY_RADIUS
+    });
+    this.broadcastPublic();
+    this.sendTeacherState();
+  }
+
+  async handleTargetedHealerSpecial(ws, player, targetPlayerId) {
+    if (!this.room || this.room.status !== 'running') return;
+    this.ensureHardcorePlayer(player);
+    if (player.knockedOut) return;
+
+    const now = Date.now();
+    if ((player.stunnedUntil || 0) > now) {
+      this.safeSend(ws, { type: 'stunned', until: player.stunnedUntil });
+      return;
+    }
+
+    player.streak ??= 0;
+    player.specialReady ??= false;
+    if (!player.specialReady) {
+      this.sendPowerStateToPlayer(player);
+      return;
+    }
+
+    const target = this.room.players?.[String(targetPlayerId || '')];
+    this.ensureHardcorePlayer(target);
+    if (!target || target.knockedOut || target.health <= 0) {
+      this.safeSend(ws, { type: 'error', message: 'Choose a living raider to heal.' });
+      return;
+    }
+
+    player.specialReady = false;
+    player.streak = 0;
+    const healing = this.healPlayer(target, TARGETED_HEAL_AMOUNT);
+    this.room.boss.health = Math.max(0, this.room.boss.health - TARGETED_HEAL_DAMAGE);
+
+    this.broadcast({
+      type: 'player_special',
+      playerId: player.id,
+      class: 'healer',
+      ability: 'renewal_burst',
+      abilityName: 'Renewal Burst',
+      damage: TARGETED_HEAL_DAMAGE,
+      healing,
+      healedPlayerIds: healing > 0 ? [target.id] : [],
+      targetPlayerId: target.id,
       bossHealth: this.room.boss.health
     });
 
@@ -103,12 +165,12 @@ export class RaidRoom extends HardcoreRaidRoom {
     this.sendPowerStateToPlayer(player);
     this.safeSend(ws, {
       type: 'special_result',
-      ability: 'fortify',
-      abilityName: 'Fortify',
-      damage: FORTIFY_DAMAGE,
+      ability: 'renewal_burst',
+      abilityName: 'Renewal Burst',
+      damage: TARGETED_HEAL_DAMAGE,
       healing,
-      fortifyUntil: player.fortifyUntil,
-      radius: FORTIFY_RADIUS
+      targetPlayerId: target.id,
+      targetName: target.name
     });
     this.broadcastPublic();
     this.sendTeacherState();
