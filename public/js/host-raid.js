@@ -18,6 +18,18 @@ const bossHealth = document.querySelector('#boss-health');
 const teamQuestions = document.querySelector('#team-questions');
 const teamAccuracy = document.querySelector('#team-accuracy');
 const bossName = document.querySelector('#boss-name');
+
+const customRulesCard = document.querySelector('#custom-rules-card');
+const customHealthMode = document.querySelector('#custom-health-mode-host');
+const customKnockouts = document.querySelector('#custom-knockouts-host');
+const customTankGuard = document.querySelector('#custom-tank-guard-host');
+const customFortify = document.querySelector('#custom-fortify-host');
+const customJumpFatigue = document.querySelector('#custom-jump-fatigue-host');
+const customAirborneMitigation = document.querySelector('#custom-airborne-mitigation-host');
+const saveCustomRulesButton = document.querySelector('#save-custom-rules');
+const customRulesStatus = document.querySelector('#custom-rules-status');
+
+const bossTuningCard = document.querySelector('#boss-tuning-card');
 const healthPerPlayerInput = document.querySelector('#boss-health-per-player');
 const minHealthInput = document.querySelector('#boss-min-health');
 const aggressionInput = document.querySelector('#boss-aggression');
@@ -41,6 +53,8 @@ updateRangeLabels();
 aggressionInput?.addEventListener('input', updateRangeLabels);
 attackPowerInput?.addEventListener('input', updateRangeLabels);
 saveTuningButton?.addEventListener('click', saveBossTuning);
+saveCustomRulesButton?.addEventListener('click', saveCustomRules);
+customHealthMode?.addEventListener('change', updateCustomRuleDependencies);
 
 if (!code || !hostKey) {
   connectionEl.textContent = 'Missing host key';
@@ -67,8 +81,12 @@ startButton.addEventListener('click', () => {
   socket.send(JSON.stringify({ type: 'start_raid' }));
 });
 
+function isCustomRaid(report = latestReport) {
+  return report?.config?.mode === 'custom';
+}
+
 function saveBossTuning() {
-  if (!socket || socket.readyState !== WebSocket.OPEN || latestReport?.status !== 'lobby') return;
+  if (!isCustomRaid() || !socket || socket.readyState !== WebSocket.OPEN || latestReport?.status !== 'lobby') return;
   saveTuningButton.disabled = true;
   tuningStatus.textContent = 'Saving...';
   socket.send(JSON.stringify({
@@ -79,6 +97,23 @@ function saveBossTuning() {
       aggression: Number(aggressionInput.value),
       attackPower: Number(attackPowerInput.value),
       warningMs: Number(warningInput.value)
+    }
+  }));
+}
+
+function saveCustomRules() {
+  if (!isCustomRaid() || !socket || socket.readyState !== WebSocket.OPEN || latestReport?.status !== 'lobby') return;
+  saveCustomRulesButton.disabled = true;
+  customRulesStatus.textContent = 'Saving...';
+  socket.send(JSON.stringify({
+    type: 'update_custom_rules',
+    rules: {
+      healthMode: customHealthMode.value === 'individual' ? 'individual' : 'shared',
+      knockouts: Boolean(customKnockouts.checked),
+      tankGuard: Boolean(customTankGuard.checked),
+      fortify: Boolean(customFortify.checked),
+      jumpFatigue: Boolean(customJumpFatigue.checked),
+      airborneMitigation: Boolean(customAirborneMitigation.checked)
     }
   }));
 }
@@ -106,6 +141,31 @@ function renderTuning(tuning, editable) {
     : 'Boss tuning is locked once the raid starts.';
 }
 
+function renderCustomRules(rules = {}, editable = false) {
+  customHealthMode.value = rules.healthMode === 'individual' ? 'individual' : 'shared';
+  customKnockouts.checked = rules.knockouts !== false && customHealthMode.value === 'individual';
+  customTankGuard.checked = rules.tankGuard !== false;
+  customFortify.checked = rules.fortify !== false;
+  customJumpFatigue.checked = rules.jumpFatigue !== false;
+  customAirborneMitigation.checked = rules.airborneMitigation !== false;
+
+  for (const control of [customHealthMode, customTankGuard, customFortify, customJumpFatigue, customAirborneMitigation]) {
+    control.disabled = !editable;
+  }
+  updateCustomRuleDependencies(editable);
+  saveCustomRulesButton.disabled = !editable;
+  customRulesStatus.textContent = editable
+    ? 'Custom raids do not award achievements, progression or loot. Save changes before starting.'
+    : 'Custom raid rules are locked once the raid starts.';
+}
+
+function updateCustomRuleDependencies(editable = latestReport?.status === 'lobby') {
+  if (!customHealthMode || !customKnockouts) return;
+  const individual = customHealthMode.value === 'individual';
+  customKnockouts.disabled = !editable || !individual;
+  if (!individual) customKnockouts.checked = false;
+}
+
 function connect() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws/${encodeURIComponent(code)}?role=host&key=${encodeURIComponent(hostKey)}`;
@@ -118,7 +178,8 @@ function connect() {
   socket.addEventListener('close', () => {
     connectionEl.textContent = 'Disconnected';
     startButton.disabled = true;
-    saveTuningButton.disabled = true;
+    if (saveTuningButton) saveTuningButton.disabled = true;
+    if (saveCustomRulesButton) saveCustomRulesButton.disabled = true;
   });
 
   socket.addEventListener('error', () => {
@@ -132,9 +193,16 @@ function connect() {
       renderTuning(payload.tuning, true);
       tuningStatus.textContent = 'Boss tuning saved.';
     }
+    if (payload.type === 'custom_rules_saved') {
+      renderCustomRules(payload.rules, true);
+      customRulesStatus.textContent = 'Custom raid rules saved.';
+    }
     if (payload.type === 'error') {
       messageEl.innerHTML = `<div class="notice error">${escapeHtml(payload.message)}</div>`;
-      if (latestReport?.status === 'lobby') saveTuningButton.disabled = false;
+      if (latestReport?.status === 'lobby' && isCustomRaid()) {
+        saveTuningButton.disabled = false;
+        saveCustomRulesButton.disabled = false;
+      }
     }
     if (payload.type === 'raid_complete') {
       messageEl.innerHTML = `<div class="notice">Raid complete: <strong>${escapeHtml(payload.outcome)}</strong>.</div>`;
@@ -146,16 +214,22 @@ function render(report) {
   if (!report) return;
   latestReport = report;
   const players = report.players || [];
+  const custom = isCustomRaid(report);
+  const editable = report.status === 'lobby';
 
   bossName.textContent = report.boss?.name || 'Boss';
-  raidStatus.textContent = titleCase(report.status || 'lobby');
+  raidStatus.textContent = custom ? `Custom · ${titleCase(report.status || 'lobby')}` : titleCase(report.status || 'lobby');
   bossHealth.textContent = report.boss ? `${Math.ceil(report.boss.health)} / ${Math.ceil(report.boss.maxHealth)}` : '-';
   teamQuestions.textContent = String(report.team?.questions || 0);
   teamAccuracy.textContent = `${report.team?.accuracy || 0}%`;
   countEl.textContent = String(players.length);
 
-  const editable = report.status === 'lobby';
-  renderTuning(report.boss?.tuning, editable);
+  customRulesCard.hidden = !custom;
+  bossTuningCard.hidden = !custom;
+  if (custom) {
+    renderCustomRules(report.config?.customRules || {}, editable);
+    renderTuning(report.boss?.tuning, editable);
+  }
 
   startButton.disabled = report.status !== 'lobby' || players.length === 0;
   startButton.textContent = report.status === 'lobby' ? 'Start raid' : report.status === 'running' ? 'Raid in progress' : 'Raid complete';
@@ -174,7 +248,7 @@ function render(report) {
       name.textContent = player.name;
       const role = document.createElement('span');
       role.className = 'badge';
-      role.textContent = player.class === 'healer' ? '✨ Healer' : '⚔️ DPS';
+      role.textContent = player.class === 'healer' ? '✨ Healer' : player.class === 'tank' ? '🛡️ Tank' : '⚔️ DPS';
       row.append(name, role);
       rosterEl.append(row);
     }
@@ -192,9 +266,10 @@ function render(report) {
   } else {
     for (const player of players) {
       const row = document.createElement('tr');
+      const role = player.class === 'healer' ? 'Healer' : player.class === 'tank' ? 'Tank' : 'DPS';
       const values = [
         player.name,
-        player.class === 'healer' ? 'Healer' : 'DPS',
+        role,
         player.attempted,
         player.correct,
         `${player.accuracy}%`,
@@ -210,8 +285,13 @@ function render(report) {
   }
 
   if (report.status === 'complete') {
-    const outcome = report.outcome === 'victory' ? 'Victory! Numberzilla has been defeated.' : 'The raid was defeated. Try again!';
-    messageEl.innerHTML = `<div class="notice"><strong>${escapeHtml(outcome)}</strong> The private results above are ready for the host.</div>`;
+    const outcome = report.outcome === 'victory'
+      ? `Victory! ${report.boss?.name || 'The boss'} has been defeated.`
+      : report.outcome === 'wipe'
+        ? 'Raid wipe. Every raider was knocked out.'
+        : 'The raid was defeated. Try again!';
+    const sandbox = custom ? ' This Custom raid does not award achievements, progression or loot.' : '';
+    messageEl.innerHTML = `<div class="notice"><strong>${escapeHtml(outcome)}</strong> The private results above are ready for the host.${escapeHtml(sandbox)}</div>`;
   }
 }
 
