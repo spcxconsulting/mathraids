@@ -1,4 +1,4 @@
-import { RaidRoom } from './raid-room-hardcore.js';
+import { RaidRoom } from './raid-room-impact.js';
 
 export { RaidRoom };
 
