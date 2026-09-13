@@ -63,7 +63,7 @@ if (battlefield && join) {
           ? [
               ['Answer correctly', 'Your correct answers heal the most injured surviving player and still hurt the boss.'],
               ['Stay alive', 'You only have 100 HP, so dodge mechanics instead of trying to heal through everything.'],
-              ['Watch the Tank', 'When an attack is hard to escape, stack close to a Tank so Guard can reduce the hit.']
+              ['Watch the Tank', 'When an attack is hard to escape, move inside a Tank’s Fortify bubble or stack close enough for Guard.']
             ]
           : [
               ['Answer correctly', 'Your correct answers restore shared raid health and still hurt the boss.'],
@@ -84,15 +84,15 @@ if (battlefield && join) {
         steps: isHardcore
           ? [
               ['You are tougher', 'You have 160 HP, but your correct answers deal less boss damage than DPS.'],
-              ['Call the stack', 'If teammates stand very close to you and you are hit by the same attack, Guard greatly reduces their damage.'],
-              ['Absorb the pressure', 'Guard transfers extra punishment onto you, so stay near Healers and still dodge when you can.']
+              ['Call the stack', 'Teammates close to you when an attack lands are guarded and take much less damage.'],
+              ['Use Fortify visibly', 'Fortify creates a large protective bubble around you. Anyone inside it when the attack impacts gets the strongest protection.']
             ]
           : [
               ['Lower damage, more defence', 'Your correct answers deal less boss damage, but your positioning can reduce shared raid damage.'],
-              ['Stack together', 'Teammates close to you during the same incoming attack count as guarded.'],
-              ['Do not face-tank everything', 'Dodging is still best when the group can safely avoid the mechanic.']
+              ['Stack together', 'Teammates close to you during the incoming attack count as guarded.'],
+              ['Use Fortify', 'Your special creates a visible protection bubble so teammates know exactly where to stand.']
             ],
-        special: '5 correct answers in a row charges Fortify, restoring Tank health and landing a smaller boss strike.'
+        special: '5 correct answers in a row charges Fortify, creating a 5-second protection bubble and landing a smaller boss strike.'
       };
     }
 
@@ -106,7 +106,7 @@ if (battlefield && join) {
         ? [
             ['Answer correctly', 'Each correct answer launches your strongest regular attack at the boss.'],
             ['Protect your HP', 'You have 100 HP. Dodge the warning zones and jump shockwaves whenever possible.'],
-            ['Use your Tank', 'If you cannot escape an attack, stack close to a Tank so Guard can reduce the damage.']
+            ['Use your Tank', 'If you cannot escape, get inside the Tank’s Fortify bubble or stack close enough for Guard before impact.']
           ]
         : [
             ['Answer correctly', 'Each correct answer launches your strongest regular attack at the boss.'],
