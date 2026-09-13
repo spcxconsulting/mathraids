@@ -49,7 +49,7 @@ function rolePowerProfile(playerClass = join?.class) {
     return {
       ability: 'renewal_burst',
       abilityName: 'Renewal Burst',
-      description: '5 correct in a row charges a powerful heal. In Hardcore, choose who receives it.'
+      description: '5 correct in a row charges a powerful heal. In individual-health raids, choose who receives it.'
     };
   }
   if (playerClass === 'tank') {
@@ -129,7 +129,7 @@ function cancelHealTargeting() {
 function activateSpecial() {
   if (!power.ready || !raidRunning || raidComplete || socket?.readyState !== WebSocket.OPEN) return;
 
-  if (join?.class === 'healer' && latestState?.hardcore) {
+  if (join?.class === 'healer' && latestState?.individualHealth) {
     if (healTargeting) {
       cancelHealTargeting();
       feedback.className = 'feedback';
@@ -307,6 +307,7 @@ function handleMessage(payload) {
     const guarded = (payload.protectedPlayerIds || []).includes(playerId);
     const guarding = (payload.guardTankIds || []).includes(playerId);
     const airborneReduced = (payload.airborneMitigatedPlayerIds || []).includes(playerId);
+    const individualHealth = Boolean(payload.individualHealth || payload.hardcore);
     const actualDamage = Number(payload.damageByPlayer?.[playerId] ?? payload.damage ?? 0);
 
     if (guarded && airborneReduced) {
@@ -314,17 +315,19 @@ function handleMessage(payload) {
       feedback.textContent = `Airborne + Tank protection reduced the hit to ${actualDamage} damage.`;
     } else if (guarded) {
       feedback.className = 'feedback good';
-      feedback.textContent = `Tank protection reduced the hit to ${actualDamage} damage.`;
+      feedback.textContent = individualHealth
+        ? `Tank protection reduced the hit to ${actualDamage} damage.`
+        : 'Tank protection reduced the raid damage from your hit.';
     } else if (airborneReduced && hit) {
       feedback.className = 'feedback good';
-      feedback.textContent = payload.hardcore
+      feedback.textContent = individualHealth
         ? `Airborne! The hit was reduced to ${actualDamage} damage.`
         : 'Airborne! Your jump reduced the raid damage from that hit.';
     } else if (guarding) {
       const protectedCount = (payload.protectedPlayerIds || []).length;
       feedback.className = 'feedback good';
       feedback.textContent = `Guard! You protected ${protectedCount} teammate${protectedCount === 1 ? '' : 's'} and absorbed extra damage.`;
-    } else if (payload.hardcore) {
+    } else if (individualHealth) {
       feedback.className = hit ? 'feedback bad' : 'feedback good';
       feedback.textContent = hit
         ? `You were hit for ${actualDamage} damage.`
@@ -472,7 +475,7 @@ function renderPower() {
   if (healTargeting) {
     powerDescription.textContent = 'Tap a glowing heal spot on a living raider.';
   } else if (power.ready) {
-    powerDescription.textContent = join?.class === 'healer' && latestState?.hardcore
+    powerDescription.textContent = join?.class === 'healer' && latestState?.individualHealth
       ? `${power.abilityName} is charged. Use it, then choose who to heal.`
       : `${power.abilityName} is charged. Use it when you are ready.`;
   } else {
@@ -486,6 +489,8 @@ function updateState(state) {
   battlefield.syncState(state);
 
   const inLobby = state.status === 'lobby';
+  const individualHealth = Boolean(state.individualHealth || state.hardcore);
+  const custom = state.config?.mode === 'custom' || state.custom;
   raidRunning = state.status === 'running';
   bossLabel.textContent = inLobby ? 'Raid staging area' : state.boss?.name || 'Boss';
 
@@ -500,7 +505,7 @@ function updateState(state) {
   raidHealthBar.style.width = `${Math.max(0, raidPercent)}%`;
 
   const dodgeText = state.team?.dodgeRate > 0 ? ` · ${state.team.dodgeRate}% dodge rate` : '';
-  const aliveText = state.hardcore ? ` · ${state.alivePlayers || 0}/${state.players?.length || 0} standing` : '';
+  const aliveText = individualHealth ? ` · ${state.alivePlayers || 0}/${state.players?.length || 0} standing` : '';
   teamStats.textContent = inLobby
     ? `${state.players?.length || 0} raiders assembling`
     : `${state.team?.questions || 0} questions · ${state.players?.length || 0} raiders${aliveText}${dodgeText}`;
@@ -509,18 +514,24 @@ function updateState(state) {
 
   if (inLobby) {
     currentQuestion = null;
-    questionCategory.textContent = state.hardcore ? 'Hardcore staging area' : 'Waiting area';
+    questionCategory.textContent = custom ? 'Custom staging area' : state.hardcore ? 'Hardcore staging area' : 'Waiting area';
     questionText.textContent = 'Explore while everyone joins';
     answersEl.replaceChildren();
     if (!feedback.classList.contains('bad')) {
       feedback.className = 'feedback';
-      feedback.textContent = state.hardcore
-        ? 'Hardcore mode: dodge attacks, protect teammates and avoid a raid wipe.'
-        : 'Move around, jump, and get ready for the host to start the raid.';
+      if (custom) {
+        feedback.textContent = 'Custom raid: the host controls the rules. Custom raids do not award achievements, progression or loot.';
+      } else if (state.hardcore) {
+        feedback.textContent = 'Hardcore mode: dodge attacks, protect teammates and avoid a raid wipe.';
+      } else {
+        feedback.textContent = 'Move around, jump, and get ready for the host to start the raid.';
+      }
     }
     battlefieldStatus.textContent = 'Raid staging area. Players can move and jump while waiting for the host.';
   } else if (state.status === 'running') {
-    battlefieldStatus.textContent = 'Raid in progress. Watch the battlefield for boss attack warnings.';
+    battlefieldStatus.textContent = custom
+      ? 'Custom raid in progress. Watch the battlefield for boss attack warnings.'
+      : 'Raid in progress. Watch the battlefield for boss attack warnings.';
   }
 
   renderPower();
@@ -535,7 +546,10 @@ function renderQuestion(question) {
   if (join.class === 'healer') {
     feedback.textContent = 'Correct answers restore an injured teammate and still damage the boss.';
   } else if (join.class === 'tank') {
-    feedback.textContent = 'Correct answers deal reduced damage. Stack with teammates during attacks to Guard them.';
+    const guardEnabled = latestState?.config?.mode !== 'custom' || latestState?.config?.customRules?.tankGuard !== false;
+    feedback.textContent = guardEnabled
+      ? 'Correct answers deal reduced damage. Stack with teammates during attacks to Guard them.'
+      : 'Correct answers deal reduced damage. Tank Guard is disabled for this Custom raid.';
   } else {
     feedback.textContent = 'Correct answers launch an attack at the boss.';
   }
