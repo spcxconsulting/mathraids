@@ -20,6 +20,15 @@ function abilityFor(player) {
     };
   }
 
+  if (player.class === 'tank') {
+    return {
+      id: 'fortify',
+      name: 'Fortify',
+      damage: 12,
+      healing: 0
+    };
+  }
+
   return {
     id: 'power_shot',
     name: 'Power Shot',
