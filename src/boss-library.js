@@ -11,6 +11,7 @@ const ALLOWED_IMAGE_TYPES = new Map([
 const ATTACK_TYPES = new Set(['beam', 'smash', 'fireball']);
 const ATTACK_FACES = new Set(['left', 'right', 'front']);
 const ATTACK_MECHANICS = new Set(['left_slam', 'right_slam', 'shockwave']);
+const CUSTOM_ID = /^custom-[a-z0-9-]+$/;
 
 function slugify(value = '') {
   return String(value)
@@ -24,6 +25,10 @@ function slugify(value = '') {
 function randomSuffix() {
   const bytes = crypto.getRandomValues(new Uint8Array(4));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function revisionToken() {
+  return `${Date.now().toString(36)}-${randomSuffix().slice(0, 4)}`;
 }
 
 function safeText(value, fallback, max = 60) {
@@ -78,6 +83,16 @@ function validateImage(file, label, required = true) {
   return extension;
 }
 
+function validExistingAsset(url, id) {
+  if (!url || !CUSTOM_ID.test(id)) return null;
+  const value = String(url);
+  const prefix = `/api/boss-assets/${id}/`;
+  if (!value.startsWith(prefix)) return null;
+  const path = value.slice(prefix.length);
+  if (!/^(?:idle|attack|background|foreground|neutral|death|attack-\d+)(?:-[a-z0-9-]+)?\.(?:png|jpg|webp)$/.test(path)) return null;
+  return value;
+}
+
 function parseAttackDefinitions(value) {
   let raw;
   try {
@@ -104,11 +119,12 @@ function parseAttackDefinitions(value) {
         x: safeNumber(attack?.originX ?? attack?.origin?.x, 0, 100, 50),
         y: safeNumber(attack?.originY ?? attack?.origin?.y, 0, 100, 24)
       },
-      geometry: attackGeometry(type, attack?.size),
+      geometry: attackGeometry(type, attack?.size ?? attack?.geometry?.beamWidth ?? attack?.geometry?.radius),
       baseDamage,
       critDamage,
       warningMs: Math.round(safeNumber(attack?.warningMs, 500, 10000, 1650)),
-      travelMs: Math.round(safeNumber(attack?.travelMs, 0, 10000, 720))
+      travelMs: Math.round(safeNumber(attack?.travelMs, 0, 10000, 720)),
+      existingImage: String(attack?.existingImage || attack?.image || '')
     };
   });
 }
@@ -117,6 +133,184 @@ async function putImage(env, key, file) {
   await env.BOSS_ASSETS.put(key, file.stream(), {
     httpMetadata: { contentType: file.type }
   });
+}
+
+async function storedCustomDefinition(env, id) {
+  if (!env.BOSS_ASSETS || !CUSTOM_ID.test(id)) return null;
+  const stored = await env.BOSS_ASSETS.get(`${DEFINITION_PREFIX}${id}.json`);
+  if (!stored) return null;
+  try {
+    return await stored.json();
+  } catch {
+    return null;
+  }
+}
+
+function queueImage({ env, uploadJobs, id, revision, name, file, label, existing, required = true }) {
+  const extension = validateImage(file, label, false);
+  if (extension) {
+    const key = `${ASSET_PREFIX}${id}/${name}-${revision}.${extension}`;
+    uploadJobs.push(putImage(env, key, file));
+    return `/api/boss-assets/${id}/${name}-${revision}.${extension}`;
+  }
+
+  const preserved = validExistingAsset(existing, id);
+  if (preserved) return preserved;
+  if (required) throw new Error(`${label} image is required.`);
+  return null;
+}
+
+async function buildEncounterDefinition(form, env, { id, existing = null }) {
+  const revision = revisionToken();
+  const uploadJobs = [];
+  const name = safeText(form.get('name'), existing?.name || 'Custom Boss');
+  const encounter = safeText(form.get('encounter'), existing?.encounter || 'Custom Encounter', 80);
+
+  const canvas = {
+    width: Math.round(safeNumber(form.get('canvasWidth'), 640, 640, 640)),
+    height: Math.round(safeNumber(form.get('canvasHeight'), 360, 360, 360))
+  };
+
+  const backgroundUrl = queueImage({
+    env,
+    uploadJobs,
+    id,
+    revision,
+    name: 'background',
+    file: form.get('background'),
+    label: 'Background',
+    existing: existing?.art?.backgroundBack
+  });
+
+  const neutralUrl = queueImage({
+    env,
+    uploadJobs,
+    id,
+    revision,
+    name: 'neutral',
+    file: form.get('idle'),
+    label: 'Neutral',
+    existing: existing?.art?.bossNeutral || existing?.art?.bossIdle || existing?.art?.boss
+  });
+
+  const deathUrl = queueImage({
+    env,
+    uploadJobs,
+    id,
+    revision,
+    name: 'death',
+    file: form.get('death'),
+    label: 'Death',
+    existing: existing?.art?.bossDeath || existing?.art?.bossNeutral || existing?.art?.bossIdle || existing?.art?.boss
+  });
+
+  const foregroundUrl = queueImage({
+    env,
+    uploadJobs,
+    id,
+    revision,
+    name: 'foreground',
+    file: form.get('foreground'),
+    label: 'Foreground',
+    existing: existing?.art?.backgroundFront,
+    required: false
+  });
+
+  const attackDefinitions = parseAttackDefinitions(form.get('attackDefinitions'));
+  const storedAttacks = attackDefinitions.map((attack, index) => {
+    const file = form.get(`attackImage_${index}`);
+    const extension = validateImage(file, `${attack.name} attack`, false);
+    let image;
+
+    if (extension) {
+      const key = `${ASSET_PREFIX}${id}/attack-${index}-${revision}.${extension}`;
+      uploadJobs.push(putImage(env, key, file));
+      image = `/api/boss-assets/${id}/attack-${index}-${revision}.${extension}`;
+    } else {
+      image = validExistingAsset(attack.existingImage, id);
+      if (!image) throw new Error(`${attack.name} attack image is required.`);
+    }
+
+    return {
+      id: attack.id,
+      name: attack.name,
+      type: attack.type,
+      faces: attack.faces,
+      mechanic: attack.mechanic,
+      origin: attack.origin,
+      geometry: attack.geometry,
+      baseDamage: attack.baseDamage,
+      critDamage: attack.critDamage,
+      warningMs: attack.warningMs,
+      travelMs: attack.travelMs,
+      image
+    };
+  });
+
+  await Promise.all(uploadJobs);
+
+  const firstAttack = storedAttacks[0];
+  const bossWidth = Math.round(safeNumber(form.get('bossWidth'), 64, 900, existing?.presentation?.width || 560));
+  const bossHeight = Math.round(safeNumber(form.get('bossHeight'), 64, 900, existing?.presentation?.height || 490));
+  const bossTop = Math.round(safeNumber(form.get('bossTop'), -500, 360, existing?.presentation?.top ?? -92));
+  const enrageSeconds = safeNumber(form.get('enrageSeconds'), 0, 3600, (existing?.enrage?.timerMs || 120000) / 1000);
+  const enrageDamageMultiplier = safeNumber(form.get('enrageDamageMultiplier'), 1, 5, existing?.enrage?.damageMultiplier || 1.5);
+
+  return {
+    schemaVersion: 3,
+    id,
+    name,
+    encounter,
+    custom: true,
+    canvas,
+    attacks: storedAttacks.map((attack) => attack.mechanic),
+    attackDefinitions: storedAttacks,
+    art: {
+      boss: neutralUrl,
+      bossIdle: neutralUrl,
+      bossNeutral: neutralUrl,
+      bossDeath: deathUrl,
+      bossAttack: firstAttack.image,
+      attackFaces: firstAttack.faces,
+      backgroundBack: backgroundUrl,
+      backgroundFront: foregroundUrl
+    },
+    defaults: {
+      ...(existing?.defaults || {}),
+      minHealth: existing?.defaults?.minHealth || 300,
+      healthPerPlayer: existing?.defaults?.healthPerPlayer || 100,
+      aggression: existing?.defaults?.aggression || 4,
+      attackPower: existing?.defaults?.attackPower || 3,
+      warningMs: firstAttack.warningMs
+    },
+    presentation: {
+      ...(existing?.presentation || {}),
+      width: bossWidth,
+      height: bossHeight,
+      top: bossTop,
+      idleSway: existing?.presentation?.idleSway ?? 5,
+      idleBob: existing?.presentation?.idleBob ?? 2.5,
+      idleBreath: existing?.presentation?.idleBreath ?? 0.007,
+      hitRecoil: existing?.presentation?.hitRecoil ?? 17,
+      defeatSink: existing?.presentation?.defeatSink ?? 230,
+      defeatDrift: existing?.presentation?.defeatDrift ?? -8,
+      defeatTilt: existing?.presentation?.defeatTilt ?? 0.055
+    },
+    enrage: {
+      timerMs: Math.round(enrageSeconds * 1000),
+      damageMultiplier: enrageDamageMultiplier
+    },
+    victory: existing?.victory || {
+      bossFallMs: 7000,
+      celebrationMs: 8200
+    },
+    lootTable: existing?.lootTable || {
+      version: 1,
+      entries: []
+    },
+    createdAt: existing?.createdAt || Date.now(),
+    updatedAt: Date.now()
+  };
 }
 
 export function bossLibraryAvailable(env) {
@@ -144,148 +338,15 @@ export async function listBosses(env) {
 
 export async function getBossFromLibrary(env, id = 'numberzilla') {
   if (BOSS_DEFINITIONS[id]) return getBossDefinition(id);
-  if (!env.BOSS_ASSETS || !/^custom-[a-z0-9-]+$/.test(id)) return null;
-
-  const stored = await env.BOSS_ASSETS.get(`${DEFINITION_PREFIX}${id}.json`);
-  if (!stored) return null;
-  try {
-    return await stored.json();
-  } catch {
-    return null;
-  }
+  return storedCustomDefinition(env, id);
 }
 
 export async function createBossTemplate(request, env) {
   if (!env.BOSS_ASSETS) throw new Error('Boss asset storage is not configured.');
-
   const form = await request.formData();
   const name = safeText(form.get('name'), 'Custom Boss');
-  const encounter = safeText(form.get('encounter'), 'Custom Encounter', 80);
   const id = `custom-${slugify(name)}-${randomSuffix()}`;
-
-  const canvas = {
-    width: Math.round(safeNumber(form.get('canvasWidth'), 640, 640, 640)),
-    height: Math.round(safeNumber(form.get('canvasHeight'), 360, 360, 360))
-  };
-
-  const background = form.get('background');
-  const foreground = form.get('foreground');
-  const idle = form.get('idle');
-  const death = form.get('death');
-  const backgroundExt = validateImage(background, 'Background');
-  const foregroundExt = validateImage(foreground, 'Foreground', false);
-  const idleExt = validateImage(idle, 'Neutral');
-  const deathExt = validateImage(death, 'Death');
-
-  const attackDefinitions = parseAttackDefinitions(form.get('attackDefinitions'));
-  const attackUploads = attackDefinitions.map((attack, index) => {
-    const file = form.get(`attackImage_${index}`);
-    const extension = validateImage(file, `${attack.name} attack`);
-    return { ...attack, file, extension };
-  });
-
-  const backgroundKey = `${ASSET_PREFIX}${id}/background.${backgroundExt}`;
-  const foregroundKey = foregroundExt ? `${ASSET_PREFIX}${id}/foreground.${foregroundExt}` : null;
-  const neutralKey = `${ASSET_PREFIX}${id}/neutral.${idleExt}`;
-  const deathKey = `${ASSET_PREFIX}${id}/death.${deathExt}`;
-
-  const uploadJobs = [
-    putImage(env, backgroundKey, background),
-    putImage(env, neutralKey, idle),
-    putImage(env, deathKey, death)
-  ];
-  if (foregroundKey) uploadJobs.push(putImage(env, foregroundKey, foreground));
-
-  const storedAttacks = attackUploads.map((attack, index) => {
-    const key = `${ASSET_PREFIX}${id}/attack-${index}.${attack.extension}`;
-    uploadJobs.push(putImage(env, key, attack.file));
-    return {
-      id: attack.id,
-      name: attack.name,
-      type: attack.type,
-      faces: attack.faces,
-      mechanic: attack.mechanic,
-      origin: attack.origin,
-      geometry: attack.geometry,
-      baseDamage: attack.baseDamage,
-      critDamage: attack.critDamage,
-      warningMs: attack.warningMs,
-      travelMs: attack.travelMs,
-      image: `/api/boss-assets/${id}/attack-${index}.${attack.extension}`
-    };
-  });
-
-  await Promise.all(uploadJobs);
-
-  const firstAttack = storedAttacks[0];
-  const bossWidth = Math.round(safeNumber(form.get('bossWidth'), 64, 900, 560));
-  const bossHeight = Math.round(safeNumber(form.get('bossHeight'), 64, 900, 490));
-  const bossTop = Math.round(safeNumber(form.get('bossTop'), -500, 360, -92));
-  const enrageSeconds = safeNumber(form.get('enrageSeconds'), 0, 3600, 120);
-  const enrageDamageMultiplier = safeNumber(form.get('enrageDamageMultiplier'), 1, 5, 1.5);
-
-  const definition = {
-    schemaVersion: 3,
-    id,
-    name,
-    encounter,
-    custom: true,
-    canvas,
-
-    // Keep the existing engine-compatible mechanic list while richer attack
-    // definitions are introduced incrementally into the runtime.
-    attacks: storedAttacks.map((attack) => attack.mechanic),
-    attackDefinitions: storedAttacks,
-
-    art: {
-      boss: `/api/boss-assets/${id}/neutral.${idleExt}`,
-      bossIdle: `/api/boss-assets/${id}/neutral.${idleExt}`,
-      bossNeutral: `/api/boss-assets/${id}/neutral.${idleExt}`,
-      bossDeath: `/api/boss-assets/${id}/death.${deathExt}`,
-      bossAttack: firstAttack.image,
-      attackFaces: firstAttack.faces,
-      backgroundBack: `/api/boss-assets/${id}/background.${backgroundExt}`,
-      backgroundFront: foregroundKey ? `/api/boss-assets/${id}/foreground.${foregroundExt}` : null
-    },
-
-    defaults: {
-      minHealth: 300,
-      healthPerPlayer: 100,
-      aggression: 4,
-      attackPower: 3,
-      warningMs: firstAttack.warningMs
-    },
-
-    presentation: {
-      width: bossWidth,
-      height: bossHeight,
-      top: bossTop,
-      idleSway: 5,
-      idleBob: 2.5,
-      idleBreath: 0.007,
-      hitRecoil: 17,
-      defeatSink: 230,
-      defeatDrift: -8,
-      defeatTilt: 0.055
-    },
-
-    enrage: {
-      timerMs: Math.round(enrageSeconds * 1000),
-      damageMultiplier: enrageDamageMultiplier
-    },
-
-    victory: {
-      bossFallMs: 7000,
-      celebrationMs: 8200
-    },
-
-    lootTable: {
-      version: 1,
-      entries: []
-    },
-
-    createdAt: Date.now()
-  };
+  const definition = await buildEncounterDefinition(form, env, { id });
 
   await env.BOSS_ASSETS.put(
     `${DEFINITION_PREFIX}${id}.json`,
@@ -296,8 +357,24 @@ export async function createBossTemplate(request, env) {
   return publicSummary(definition);
 }
 
+export async function updateBossTemplate(request, env, id) {
+  if (!env.BOSS_ASSETS) throw new Error('Boss asset storage is not configured.');
+  if (!CUSTOM_ID.test(id)) throw new Error('Boss encounter ID is invalid.');
+  const existing = await storedCustomDefinition(env, id);
+  if (!existing) return null;
+
+  const form = await request.formData();
+  const definition = await buildEncounterDefinition(form, env, { id, existing });
+  await env.BOSS_ASSETS.put(
+    `${DEFINITION_PREFIX}${id}.json`,
+    JSON.stringify(definition),
+    { httpMetadata: { contentType: 'application/json; charset=utf-8' } }
+  );
+  return definition;
+}
+
 export async function deleteBossTemplate(env, id) {
-  if (!env.BOSS_ASSETS || !/^custom-[a-z0-9-]+$/.test(id)) return false;
+  if (!env.BOSS_ASSETS || !CUSTOM_ID.test(id)) return false;
   const definitionKey = `${DEFINITION_PREFIX}${id}.json`;
   const existing = await env.BOSS_ASSETS.get(definitionKey);
   if (!existing) return false;
@@ -309,7 +386,7 @@ export async function deleteBossTemplate(env, id) {
 }
 
 export async function serveBossAsset(env, path) {
-  const valid = /^custom-[a-z0-9-]+\/(?:idle|attack|background|foreground|neutral|death|attack-\d+)\.(?:png|jpg|webp)$/.test(path);
+  const valid = /^custom-[a-z0-9-]+\/(?:idle|attack|background|foreground|neutral|death|attack-\d+)(?:-[a-z0-9-]+)?\.(?:png|jpg|webp)$/.test(path);
   if (!env.BOSS_ASSETS || !valid) return new Response('Not found', { status: 404 });
 
   const object = await env.BOSS_ASSETS.get(`${ASSET_PREFIX}${path}`);
