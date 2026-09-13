@@ -11,7 +11,8 @@ import {
   deleteBossTemplate,
   getBossFromLibrary,
   listBosses,
-  serveBossAsset
+  serveBossAsset,
+  updateBossTemplate
 } from './boss-library.js';
 
 export { RaidRoom };
@@ -91,14 +92,31 @@ export default {
       }
     }
 
-    const deleteBossMatch = url.pathname.match(/^\/api\/bosses\/(custom-[a-z0-9-]+)$/);
-    if (deleteBossMatch && request.method === 'DELETE') {
+    const bossMatch = url.pathname.match(/^\/api\/bosses\/(custom-[a-z0-9-]+)$/);
+    if (bossMatch && request.method === 'GET') {
       if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
-      const deleted = await deleteBossTemplate(env, deleteBossMatch[1]);
+      const boss = await getBossFromLibrary(env, bossMatch[1]);
+      return boss ? json({ boss }) : json({ error: 'Boss encounter not found.' }, 404);
+    }
+
+    if (bossMatch && request.method === 'PUT') {
+      if (!bossLibraryAvailable(env)) return json({ error: 'Boss asset storage is not configured.' }, 503);
+      if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
+      try {
+        const boss = await updateBossTemplate(request, env, bossMatch[1]);
+        return boss ? json({ boss }) : json({ error: 'Boss encounter not found.' }, 404);
+      } catch (error) {
+        return json({ error: error.message || 'Could not update boss encounter.' }, 400);
+      }
+    }
+
+    if (bossMatch && request.method === 'DELETE') {
+      if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
+      const deleted = await deleteBossTemplate(env, bossMatch[1]);
       return deleted ? json({ ok: true }) : json({ error: 'Boss encounter not found.' }, 404);
     }
 
-    const bossAssetMatch = url.pathname.match(/^\/api\/boss-assets\/(custom-[a-z0-9-]+\/(?:idle|attack|background|foreground|neutral|death|attack-\d+)\.(?:png|jpg|webp))$/);
+    const bossAssetMatch = url.pathname.match(/^\/api\/boss-assets\/(custom-[a-z0-9-]+\/(?:idle|attack|background|foreground|neutral|death|attack-\d+)(?:-[a-z0-9-]+)?\.(?:png|jpg|webp))$/);
     if (bossAssetMatch && request.method === 'GET') {
       return serveBossAsset(env, bossAssetMatch[1]);
     }
