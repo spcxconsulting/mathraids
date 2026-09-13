@@ -2,7 +2,6 @@ const params = new URLSearchParams(window.location.search);
 const form = document.querySelector('#join-form');
 const codeInput = document.querySelector('#code');
 const nameInput = document.querySelector('#name');
-const classInput = document.querySelector('#class');
 const button = document.querySelector('#join-button');
 const message = document.querySelector('#join-message');
 
@@ -13,7 +12,7 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const code = normaliseCode(codeInput.value);
   const name = nameInput.value.trim().slice(0, 20);
-  const requestedClass = String(classInput.value || 'dps');
+  const requestedClass = String(form.querySelector('input[name="class"]:checked')?.value || 'dps');
   const playerClass = ['dps', 'healer', 'tank'].includes(requestedClass) ? requestedClass : 'dps';
 
   if (code.length !== 6 || !name) return;
@@ -52,7 +51,7 @@ function normaliseCode(value) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, (character) => ({
+  return String(value).replace(/[&<>'\"]/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[character]));
 }
