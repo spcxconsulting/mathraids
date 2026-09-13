@@ -1,5 +1,4 @@
 const form = document.querySelector('#boss-template-form');
-const keyInput = document.querySelector('#boss-library-key');
 const idleInput = document.querySelector('#boss-idle');
 const attackInput = document.querySelector('#boss-attack');
 const idlePreview = document.querySelector('#idle-preview');
@@ -8,18 +7,29 @@ const message = document.querySelector('#boss-template-message');
 const saveButton = document.querySelector('#save-boss-template');
 const list = document.querySelector('#boss-library-list');
 const refreshButton = document.querySelector('#refresh-bosses');
-
-keyInput.value = sessionStorage.getItem('mathraids:boss-library-key') || '';
-keyInput.addEventListener('input', () => {
-  sessionStorage.setItem('mathraids:boss-library-key', keyInput.value);
-});
+const logoutButton = document.querySelector('#admin-logout');
 
 bindPreview(idleInput, idlePreview);
 bindPreview(attackInput, attackPreview);
 refreshButton.addEventListener('click', loadBosses);
 form.addEventListener('submit', saveBoss);
+logoutButton?.addEventListener('click', signOut);
 
-loadBosses();
+boot();
+
+async function boot() {
+  try {
+    const response = await fetch('/api/admin/session', { cache: 'no-store' });
+    const data = await response.json();
+    if (!data.authenticated) {
+      window.location.replace('/admin/');
+      return;
+    }
+    await loadBosses();
+  } catch {
+    window.location.replace('/admin/');
+  }
+}
 
 function bindPreview(input, image) {
   let objectUrl = null;
@@ -93,21 +103,21 @@ async function saveBoss(event) {
   message.innerHTML = '';
 
   const formData = new FormData(form);
-  formData.delete('libraryKey');
 
   try {
     const response = await fetch('/api/bosses', {
       method: 'POST',
-      headers: libraryHeaders(),
       body: formData
     });
     const data = await response.json();
+    if (response.status === 403) {
+      window.location.replace('/admin/');
+      return;
+    }
     if (!response.ok) throw new Error(data.error || 'Could not save boss template');
 
     message.innerHTML = `<div class="notice success">${escapeHtml(data.boss.name)} is now available when creating a raid.</div>`;
-    const preservedKey = keyInput.value;
     form.reset();
-    keyInput.value = preservedKey;
     idlePreview.removeAttribute('src');
     attackPreview.removeAttribute('src');
     await loadBosses();
@@ -123,11 +133,12 @@ async function deleteBoss(boss, button) {
   if (!window.confirm(`Delete ${boss.name} from the Boss Library? Existing raids will keep their saved copy.`)) return;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/bosses/${encodeURIComponent(boss.id)}`, {
-      method: 'DELETE',
-      headers: libraryHeaders()
-    });
+    const response = await fetch(`/api/bosses/${encodeURIComponent(boss.id)}`, { method: 'DELETE' });
     const data = await response.json();
+    if (response.status === 403) {
+      window.location.replace('/admin/');
+      return;
+    }
     if (!response.ok) throw new Error(data.error || 'Could not delete boss');
     await loadBosses();
   } catch (error) {
@@ -136,11 +147,13 @@ async function deleteBoss(boss, button) {
   }
 }
 
-function libraryHeaders() {
-  const headers = new Headers();
-  const key = keyInput.value.trim();
-  if (key) headers.set('x-boss-library-key', key);
-  return headers;
+async function signOut() {
+  logoutButton.disabled = true;
+  try {
+    await fetch('/api/admin/logout', { method: 'POST' });
+  } finally {
+    window.location.replace('/admin/');
+  }
 }
 
 function escapeHtml(value) {
