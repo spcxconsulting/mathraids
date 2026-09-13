@@ -63,14 +63,16 @@ if (battlefield && join) {
           ? [
               ['Answer correctly', 'Your correct answers heal the most injured surviving player and still hurt the boss.'],
               ['Stay alive', 'You only have 100 HP, so dodge mechanics instead of trying to heal through everything.'],
-              ['Watch the Tank', 'When an attack is hard to escape, move inside a Tank’s Fortify bubble or stack close enough for Guard.']
+              ['Choose your big heal', 'When Renewal Burst is ready, activate it and tap the glowing heal spot on the living raider who needs it most.']
             ]
           : [
               ['Answer correctly', 'Your correct answers restore shared raid health and still hurt the boss.'],
               ['Keep moving', 'Dodge side attacks and jump shockwaves so the group loses less health.'],
               ['Support the group', 'Your lower damage is balanced by keeping everyone in the fight longer.']
             ],
-        special: '5 correct answers in a row charges Renewal Burst, a strong group heal plus a boss strike.'
+        special: isHardcore
+          ? '5 correct answers in a row charges Renewal Burst. Activate it, then choose a living raider to receive the heal.'
+          : '5 correct answers in a row charges Renewal Burst, a strong shared heal plus a boss strike.'
       };
     }
 
@@ -92,7 +94,7 @@ if (battlefield && join) {
               ['Stack together', 'Teammates close to you during the incoming attack count as guarded.'],
               ['Use Fortify', 'Your special creates a visible protection bubble so teammates know exactly where to stand.']
             ],
-        special: '5 correct answers in a row charges Fortify, creating a 5-second protection bubble and landing a smaller boss strike.'
+        special: '5 correct answers in a row charges Fortify, creating a 5-second protection bubble and restoring some Tank health.'
       };
     }
 
