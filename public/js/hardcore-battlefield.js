@@ -2,7 +2,7 @@ import { createRaidBattlefield as createBaseBattlefield } from './vector-battlef
 
 const WIDTH = 640;
 const HEIGHT = 360;
-const GROUND_Y = 312;
+const GROUND_Y = 338;
 const FORTIFY_RADIUS_PCT = 12;
 const DEATH_FALL_MS = 680;
 const PLAYER_W = 24;
@@ -226,28 +226,28 @@ export function createRaidBattlefield(options = {}) {
 
     for (const entry of placementOrder) {
       let offset = 0;
-      while (placed.some((item) => Math.abs(item.x - entry.x) < 34 && Math.abs(item.y - (entry.y - 40 - offset)) < 7)) offset += 7;
+      while (placed.some((item) => Math.abs(item.x - entry.x) < 28 && Math.abs(item.y - (entry.y - 35 - offset)) < 5.5)) offset += 5.5;
       offsets.set(entry.id, offset);
-      placed.push({ x: entry.x, y: entry.y - 40 - offset });
+      placed.push({ x: entry.x, y: entry.y - 35 - offset });
     }
     return offsets;
   }
 
   function drawHealth(entry, now, offset = 0, isLocal = false) {
     if (!hardcore || entry.knockedOut) return;
-    const barWidth = entry.class === 'tank' ? 34 : 30;
-    const barHeight = 3;
+    const barWidth = entry.class === 'tank' ? 28 : 24;
+    const barHeight = 2.5;
     const x = entry.x - barWidth / 2;
-    const y = entry.y - 40 - offset;
+    const y = entry.y - 35 - offset;
     const ratio = clamp(entry.health / Math.max(1, entry.maxHealth), 0, 1);
 
     if (entry.guardFlashUntil > now) {
       ctx.save();
       ctx.shadowColor = entry.class === 'tank' ? '#9de4ff' : '#70caff';
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 6;
       ctx.strokeStyle = '#d7f5ff';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(x - 2, y - 2, barWidth + 4, barHeight + 4);
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(x - 1.5, y - 1.5, barWidth + 3, barHeight + 3);
       ctx.restore();
     }
 
@@ -262,17 +262,17 @@ export function createRaidBattlefield(options = {}) {
     ctx.fillRect(x, y, barWidth * ratio, barHeight);
 
     ctx.strokeStyle = isLocal ? '#f4fbff' : entry.class === 'tank' ? '#8ed7ff' : 'rgba(255,255,255,.55)';
-    ctx.lineWidth = isLocal ? 1.35 : 0.8;
+    ctx.lineWidth = isLocal ? 1 : 0.7;
     ctx.strokeRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
 
     if (isLocal) {
-      ctx.font = '800 6.5px system-ui, sans-serif';
+      ctx.font = '800 5.5px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = 'rgba(4,9,16,.95)';
-      ctx.lineWidth = 2;
-      ctx.strokeText('YOU', entry.x, y - 3);
-      ctx.fillText('YOU', entry.x, y - 3);
+      ctx.lineWidth = 1.5;
+      ctx.strokeText('YOU', entry.x, y - 2.5);
+      ctx.fillText('YOU', entry.x, y - 2.5);
     }
   }
 
