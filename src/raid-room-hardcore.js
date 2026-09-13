@@ -7,8 +7,15 @@ import {
 import { publicQuestion } from './questions.js';
 
 const HARDCORE_PLAYER_HEALTH = 100;
+const HARDCORE_TANK_HEALTH = 160;
 const HEALER_ANSWER_HEAL = 8;
 const RENEWAL_BURST_HEAL = 20;
+const TANK_ANSWER_DAMAGE = 6;
+const TANK_GUARD_RADIUS = 9;
+const TANK_GUARD_DAMAGE_MULTIPLIER = 0.3;
+const TANK_ABSORB_SHARE = 0.35;
+const TANK_ABSORB_CAP_MULTIPLIER = 0.75;
+const TANK_FORTIFY_HEAL = 35;
 
 function decodeMessage(message) {
   try {
@@ -18,6 +25,10 @@ function decodeMessage(message) {
   }
 }
 
+function maxHealthFor(player) {
+  return player?.class === 'tank' ? HARDCORE_TANK_HEALTH : HARDCORE_PLAYER_HEALTH;
+}
+
 export class RaidRoom extends ConfigurableRaidRoom {
   isHardcore() {
     return this.room?.config?.mode === 'hardcore';
@@ -25,8 +36,9 @@ export class RaidRoom extends ConfigurableRaidRoom {
 
   ensureHardcorePlayer(player) {
     if (!player || !this.isHardcore()) return player;
-    player.maxHealth = Math.max(1, Number(player.maxHealth) || HARDCORE_PLAYER_HEALTH);
-    player.health = Math.min(player.maxHealth, Math.max(0, Number.isFinite(Number(player.health)) ? Number(player.health) : player.maxHealth));
+    const maxHealth = maxHealthFor(player);
+    player.maxHealth = maxHealth;
+    player.health = Math.min(maxHealth, Math.max(0, Number.isFinite(Number(player.health)) ? Number(player.health) : maxHealth));
     player.knockedOut = Boolean(player.knockedOut || player.health <= 0);
     if (player.knockedOut) player.health = 0;
     return player;
@@ -45,7 +57,7 @@ export class RaidRoom extends ConfigurableRaidRoom {
 
     if (body.mode === 'hardcore') {
       this.room.config.mode = 'hardcore';
-      this.room.version = Math.max(Number(this.room.version) || 0, 6);
+      this.room.version = Math.max(Number(this.room.version) || 0, 7);
       await this.saveRoom();
     }
     return response;
@@ -56,8 +68,8 @@ export class RaidRoom extends ConfigurableRaidRoom {
     if (!result?.ok || !this.room || !this.isHardcore()) return result;
 
     for (const player of Object.values(this.room.players)) {
-      player.maxHealth = HARDCORE_PLAYER_HEALTH;
-      player.health = HARDCORE_PLAYER_HEALTH;
+      player.maxHealth = maxHealthFor(player);
+      player.health = player.maxHealth;
       player.knockedOut = false;
     }
 
@@ -120,6 +132,13 @@ export class RaidRoom extends ConfigurableRaidRoom {
     return { healing, healedPlayerIds };
   }
 
+  healPlayer(player, amount) {
+    if (!player || player.knockedOut) return 0;
+    const before = player.health;
+    player.health = Math.min(player.maxHealth, player.health + amount);
+    return player.health - before;
+  }
+
   async handleAnswer(ws, player, event) {
     if (!this.isHardcore()) return super.handleAnswer(ws, player, event);
     this.ensureHardcorePlayer(player);
@@ -156,6 +175,8 @@ export class RaidRoom extends ConfigurableRaidRoom {
         const healed = this.healMostInjured(HEALER_ANSWER_HEAL);
         healing = healed.healing;
         healedPlayerIds = healed.healedPlayerIds;
+      } else if (player.class === 'tank') {
+        damage = TANK_ANSWER_DAMAGE;
       } else {
         damage = 10;
       }
@@ -231,10 +252,14 @@ export class RaidRoom extends ConfigurableRaidRoom {
       return;
     }
 
-    const healer = player.class === 'healer';
-    const ability = healer
-      ? { id: 'renewal_burst', name: 'Renewal Burst', damage: 15 }
-      : { id: 'power_shot', name: 'Power Shot', damage: 35 };
+    let ability;
+    if (player.class === 'healer') {
+      ability = { id: 'renewal_burst', name: 'Renewal Burst', damage: 15 };
+    } else if (player.class === 'tank') {
+      ability = { id: 'fortify', name: 'Fortify', damage: 12 };
+    } else {
+      ability = { id: 'power_shot', name: 'Power Shot', damage: 35 };
+    }
 
     player.specialReady = false;
     player.streak = 0;
@@ -242,10 +267,13 @@ export class RaidRoom extends ConfigurableRaidRoom {
 
     let healing = 0;
     let healedPlayerIds = [];
-    if (healer) {
+    if (player.class === 'healer') {
       const healed = this.healLivingGroup(RENEWAL_BURST_HEAL);
       healing = healed.healing;
       healedPlayerIds = healed.healedPlayerIds;
+    } else if (player.class === 'tank') {
+      healing = this.healPlayer(player, TANK_FORTIFY_HEAL);
+      if (healing > 0) healedPlayerIds = [player.id];
     }
 
     this.broadcast({
@@ -324,24 +352,59 @@ export class RaidRoom extends ConfigurableRaidRoom {
     const hitPlayerIds = [];
     const dodgedPlayerIds = [];
     const knockedOutPlayerIds = [];
-    const damage = hardcorePlayerDamageForPower(this.bossTuning().attackPower);
+    const protectedPlayerIds = [];
+    const guardTankIds = new Set();
+    const baseDamage = hardcorePlayerDamageForPower(this.bossTuning().attackPower);
 
+    const hitById = new Map();
     for (const player of living) {
       let hit = false;
       if (attack.type === 'left_slam') hit = player.x < 50;
       if (attack.type === 'right_slam') hit = player.x >= 50;
       if (attack.type === 'shockwave') hit = (player.airborneUntil || 0) < attack.executeAt;
+      hitById.set(player.id, hit);
+      if (hit) hitPlayerIds.push(player.id);
+      else dodgedPlayerIds.push(player.id);
+    }
 
-      if (hit) {
-        hitPlayerIds.push(player.id);
-        player.health = Math.max(0, player.health - damage);
-        if (player.health <= 0) {
-          player.knockedOut = true;
-          player.currentQuestion = null;
-          knockedOutPlayerIds.push(player.id);
-        }
-      } else {
-        dodgedPlayerIds.push(player.id);
+    const activeTanks = living.filter((player) => player.class === 'tank' && hitById.get(player.id));
+    const protectedByTank = new Map();
+    for (const player of living) {
+      if (!hitById.get(player.id) || player.class === 'tank') continue;
+      const tank = activeTanks.find((candidate) => Math.abs(candidate.x - player.x) <= TANK_GUARD_RADIUS);
+      if (!tank) continue;
+      protectedPlayerIds.push(player.id);
+      guardTankIds.add(tank.id);
+      if (!protectedByTank.has(tank.id)) protectedByTank.set(tank.id, []);
+      protectedByTank.get(tank.id).push(player.id);
+    }
+
+    for (const player of living) {
+      if (!hitById.get(player.id)) continue;
+      if (player.class === 'tank') continue;
+
+      const protectedByTankId = [...protectedByTank.entries()]
+        .find(([, playerIds]) => playerIds.includes(player.id))?.[0];
+      const damage = protectedByTankId
+        ? Math.max(1, Math.round(baseDamage * TANK_GUARD_DAMAGE_MULTIPLIER))
+        : baseDamage;
+      player.health = Math.max(0, player.health - damage);
+    }
+
+    for (const tank of activeTanks) {
+      const protectedCount = protectedByTank.get(tank.id)?.length || 0;
+      const preventedPerPlayer = baseDamage - Math.max(1, Math.round(baseDamage * TANK_GUARD_DAMAGE_MULTIPLIER));
+      const rawAbsorb = Math.round(protectedCount * preventedPerPlayer * TANK_ABSORB_SHARE);
+      const absorbCap = Math.round(baseDamage * TANK_ABSORB_CAP_MULTIPLIER);
+      const tankDamage = baseDamage + Math.min(absorbCap, rawAbsorb);
+      tank.health = Math.max(0, tank.health - tankDamage);
+    }
+
+    for (const player of living) {
+      if (player.health <= 0) {
+        player.knockedOut = true;
+        player.currentQuestion = null;
+        knockedOutPlayerIds.push(player.id);
       }
     }
 
@@ -360,9 +423,11 @@ export class RaidRoom extends ConfigurableRaidRoom {
     this.broadcast({
       type: 'boss_attack',
       attackType: attack.type,
-      damage,
+      damage: baseDamage,
       hitPlayerIds,
       dodgedPlayerIds,
+      protectedPlayerIds,
+      guardTankIds: [...guardTankIds],
       knockedOutPlayerIds,
       hardcore: true
     });
