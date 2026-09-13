@@ -1,0 +1,85 @@
+.role-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.role-choice {
+  position: relative;
+  cursor: pointer;
+}
+
+.role-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.role-choice-card {
+  display: grid;
+  align-content: start;
+  min-height: 220px;
+  padding: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: #0b1626;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+}
+
+.role-choice:hover .role-choice-card {
+  transform: translateY(-2px);
+  border-color: rgba(101,214,255,.42);
+}
+
+.role-choice input:focus-visible + .role-choice-card {
+  outline: 3px solid rgba(101,214,255,.4);
+  outline-offset: 2px;
+}
+
+.role-choice input:checked + .role-choice-card {
+  border-color: #65d6ff;
+  background: #11243b;
+  box-shadow: 0 0 0 2px rgba(101,214,255,.15), 0 14px 28px rgba(0,0,0,.24);
+}
+
+.role-choice.healer input:checked + .role-choice-card {
+  border-color: #8aff80;
+  box-shadow: 0 0 0 2px rgba(138,255,128,.13), 0 14px 28px rgba(0,0,0,.24);
+}
+
+.role-choice.tank input:checked + .role-choice-card {
+  border-color: #79cfff;
+  box-shadow: 0 0 0 2px rgba(121,207,255,.16), 0 14px 28px rgba(0,0,0,.24);
+}
+
+.role-choice-icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.role-choice-title {
+  font-size: 1.15rem;
+  font-weight: 950;
+  letter-spacing: -.02em;
+}
+
+.role-choice-copy {
+  margin-top: 7px;
+  color: #aab8cb;
+  line-height: 1.45;
+  font-size: .9rem;
+}
+
+.role-choice-stat {
+  margin-top: auto;
+  padding-top: 14px;
+  color: #dceaff;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .role-choice-grid { grid-template-columns: 1fr; }
+  .role-choice-card { min-height: 0; }
+}
