@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Join a Raid - MathRaids</title>
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/join.css">
 </head>
 <body>
   <header class="shell site-header">
@@ -12,7 +13,7 @@
   </header>
 
   <main class="shell">
-    <section class="card form-card">
+    <section class="card form-card" style="max-width:920px">
       <div class="eyebrow">Player join</div>
       <h1 style="font-size:clamp(2.5rem,7vw,4.5rem)">Join the raid</h1>
       <p>No account is required. Your individual results are private and only visible to the raid host.</p>
@@ -29,13 +30,39 @@
         </div>
 
         <div class="form-row">
-          <label for="class">Choose your role</label>
-          <select id="class" name="class">
-            <option value="dps">⚔️ DPS - deal the most boss damage</option>
-            <option value="healer">✨ Healer - restore health and deal some damage</option>
-            <option value="tank">🛡️ Tank - more health, less damage, protect stacked teammates</option>
-          </select>
-          <div class="form-hint">Tank Guard is most important in Hardcore raids. Stay close to the Tank during dangerous attacks to reduce incoming damage.</div>
+          <label>Choose your role</label>
+          <div class="role-choice-grid" role="radiogroup" aria-label="Choose your raid role">
+            <label class="role-choice dps">
+              <input type="radio" name="class" value="dps" checked>
+              <span class="role-choice-card">
+                <span class="role-choice-icon" aria-hidden="true">⚔️</span>
+                <span class="role-choice-title">DPS</span>
+                <span class="role-choice-copy">Deal the most boss damage. Keep answering accurately, dodge mechanics and use Power Shot for burst damage.</span>
+                <span class="role-choice-stat">Highest damage · 100 HP in Hardcore</span>
+              </span>
+            </label>
+
+            <label class="role-choice healer">
+              <input type="radio" name="class" value="healer">
+              <span class="role-choice-card">
+                <span class="role-choice-icon" aria-hidden="true">✨</span>
+                <span class="role-choice-title">Healer</span>
+                <span class="role-choice-copy">Keep the group alive. Correct answers restore health while still damaging the boss, and Renewal Burst heals the group.</span>
+                <span class="role-choice-stat">Group support · 100 HP in Hardcore</span>
+              </span>
+            </label>
+
+            <label class="role-choice tank">
+              <input type="radio" name="class" value="tank">
+              <span class="role-choice-card">
+                <span class="role-choice-icon" aria-hidden="true">🛡️</span>
+                <span class="role-choice-title">Tank</span>
+                <span class="role-choice-copy">Take more punishment and protect nearby teammates. Call the stack when danger is coming and use Fortify for a protective bubble.</span>
+                <span class="role-choice-stat">160 HP · Lower damage · Guard nearby players</span>
+              </span>
+            </label>
+          </div>
+          <div class="form-hint">Roles matter most in Hardcore raids, where positioning, healing and survival can decide whether the group wipes.</div>
         </div>
 
         <div id="join-message" aria-live="polite"></div>
