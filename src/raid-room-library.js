@@ -1,5 +1,14 @@
 import { RaidRoom as ImpactRaidRoom } from './raid-room-impact.js';
+import { normaliseCustomRules } from './raid-room-configurable.js';
 import { normaliseBossTuning } from './bosses.js';
+
+function decodeMessage(message) {
+  try {
+    return JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message));
+  } catch {
+    return null;
+  }
+}
 
 export class RaidRoom extends ImpactRaidRoom {
   bossDefinition() {
@@ -16,11 +25,40 @@ export class RaidRoom extends ImpactRaidRoom {
       this.room.config.bossDefinition = definition;
       this.room.boss.name = definition.name || this.room.boss.name;
       this.room.boss.tuning = normaliseBossTuning({}, definition);
-      this.room.version = Math.max(Number(this.room.version) || 0, 10);
+      this.room.version = Math.max(Number(this.room.version) || 0, 13);
       await this.saveRoom();
     }
 
     return response;
+  }
+
+  async webSocketMessage(ws, message) {
+    const event = decodeMessage(message);
+    const attachment = ws.deserializeAttachment();
+
+    if (event?.type === 'update_custom_rules' && attachment?.role === 'teacher') {
+      if (!this.room || this.room.status !== 'lobby') {
+        this.safeSend(ws, { type: 'error', message: 'Custom raid rules can only be changed before the raid starts.' });
+        return;
+      }
+      if (this.room.config?.mode !== 'custom') {
+        this.safeSend(ws, { type: 'error', message: 'Raid rules can only be changed for Custom raids.' });
+        return;
+      }
+
+      const rules = normaliseCustomRules(event.rules || {});
+      this.room.config.customRules = rules;
+      this.room.config.progressionEligible = false;
+      this.room.config.rewardsEligible = false;
+      await this.saveRoom();
+
+      this.safeSend(ws, { type: 'custom_rules_saved', rules });
+      this.broadcastPublic();
+      this.sendTeacherState();
+      return;
+    }
+
+    return super.webSocketMessage(ws, message);
   }
 
   publicState() {
