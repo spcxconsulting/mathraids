@@ -3,13 +3,6 @@ import { createRaidBattlefield as createBaseBattlefield } from './vector-battlef
 const WIDTH = 640;
 const HEIGHT = 360;
 const GROUND_Y = 312;
-const MIN_X = 28;
-const MAX_X = WIDTH - 28;
-const RUN_SPEED = 270;
-const JUMP_SPEED = 520;
-const GRAVITY = 1500;
-const REMOTE_LERP = 18;
-const REMOTE_JUMP_MS = 720;
 const FORTIFY_RADIUS_PCT = 12;
 const DEATH_FALL_MS = 680;
 const PLAYER_W = 24;
@@ -21,7 +14,7 @@ function clamp(value, min, max) {
 }
 
 function pctToX(value) {
-  return clamp((Number(value) / 100) * WIDTH, MIN_X, MAX_X);
+  return clamp((Number(value) / 100) * WIDTH, 28, WIDTH - 28);
 }
 
 function loadImage(src) {
@@ -42,9 +35,7 @@ export function createRaidBattlefield(options = {}) {
   let hardcore = false;
   let localKnockedOut = false;
   let running = true;
-  let lastFrameAt = performance.now();
   let healTargetCallback = null;
-  const input = { left: false, right: false };
   const players = new Map();
   const deathArt = { dps: null, healer: null };
 
@@ -59,23 +50,24 @@ export function createRaidBattlefield(options = {}) {
   const base = createBaseBattlefield({
     ...options,
     onPosition(position) {
-      const local = players.get(localPlayerId);
-      if (local && Number.isFinite(Number(position.x))) local.serverX = pctToX(position.x);
       options.onPosition?.(position);
     },
-    onJump() {
-      if (!localKnockedOut) options.onJump?.();
+    onJump(detail) {
+      if (!localKnockedOut) options.onJump?.(detail);
     }
   });
+
+  const baseCanvas = host.querySelector('.vector-battlefield-canvas');
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
 
   const overlay = document.createElement('canvas');
   overlay.className = 'hardcore-canvas-overlay';
   overlay.setAttribute('aria-hidden', 'true');
   Object.assign(overlay.style, {
     position: 'absolute',
-    inset: '0',
-    width: '100%',
-    height: '100%',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
     zIndex: '5',
     display: 'none',
@@ -119,13 +111,7 @@ export function createRaidBattlefield(options = {}) {
         class: player.class || 'dps',
         facing: player.facing === 'left' ? 'left' : 'right',
         x,
-        targetX: x,
-        serverX: x,
         y: GROUND_Y,
-        vy: 0,
-        grounded: true,
-        remoteJumpStart: 0,
-        remoteJumpDuration: REMOTE_JUMP_MS,
         health: Number(player.health) || 100,
         maxHealth: Number(player.maxHealth) || 100,
         knockedOut: startsOut,
@@ -133,8 +119,7 @@ export function createRaidBattlefield(options = {}) {
         fortifyUntil: Number(player.fortifyUntil) || 0,
         guardFlashUntil: 0,
         healPulseUntil: 0,
-        dazedUntil: 0,
-        initialised: false
+        dazedUntil: 0
       };
       players.set(player.id, entry);
     }
@@ -152,20 +137,6 @@ export function createRaidBattlefield(options = {}) {
     return entry;
   }
 
-  function applyRemoteAirborne(entry, airborneUntil) {
-    if (!entry || entry.id === localPlayerId || entry.knockedOut) return;
-    const until = Number(airborneUntil) || 0;
-    const remaining = until - Date.now();
-    if (remaining <= 0) {
-      entry.remoteJumpStart = 0;
-      entry.y = GROUND_Y;
-      return;
-    }
-    const elapsed = clamp(REMOTE_JUMP_MS - remaining, 0, REMOTE_JUMP_MS);
-    entry.remoteJumpStart = performance.now() - elapsed;
-    entry.remoteJumpDuration = REMOTE_JUMP_MS;
-  }
-
   function syncOverlayState(serverState) {
     hardcore = Boolean(serverState?.hardcore || serverState?.config?.mode === 'hardcore');
     overlay.style.display = hardcore ? 'block' : 'none';
@@ -175,17 +146,9 @@ export function createRaidBattlefield(options = {}) {
 
     for (const player of serverState?.players || []) {
       const entry = ensurePlayer(player);
-      const targetX = pctToX(player.x);
-      entry.serverX = targetX;
-      if (player.id === localPlayerId) {
-        if (!entry.initialised) {
-          entry.x = targetX;
-          entry.targetX = targetX;
-          entry.initialised = true;
-        }
-      } else {
-        entry.targetX = targetX;
-        applyRemoteAirborne(entry, player.airborneUntil);
+      if (!entry.knockedOut && !base.getPlayerVisualState?.(entry.id)) {
+        entry.x = pctToX(player.x);
+        entry.y = GROUND_Y;
       }
     }
 
@@ -203,61 +166,31 @@ export function createRaidBattlefield(options = {}) {
     };
   }
 
+  function syncVisualPositions() {
+    for (const entry of players.values()) {
+      if (entry.knockedOut) continue;
+      const visual = base.getPlayerVisualState?.(entry.id);
+      if (!visual) continue;
+      entry.x = visual.x;
+      entry.y = visual.y;
+      entry.facing = visual.facing;
+    }
+  }
+
   function resizeOverlay() {
-    const rect = host.getBoundingClientRect();
+    const rect = baseCanvas?.getBoundingClientRect?.() || host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    overlay.style.width = `${Math.floor(rect.width)}px`;
+    overlay.style.height = `${Math.floor(rect.height)}px`;
     overlay.width = Math.max(1, Math.round(rect.width * dpr));
     overlay.height = Math.max(1, Math.round(rect.height * dpr));
   }
 
   const resizeObserver = new ResizeObserver(resizeOverlay);
   resizeObserver.observe(host);
+  if (baseCanvas) resizeObserver.observe(baseCanvas);
   resizeOverlay();
-
-  function jumpLocalOverlay() {
-    const player = players.get(localPlayerId);
-    if (!player || localKnockedOut || !player.grounded || player.dazedUntil > Date.now()) return;
-    player.grounded = false;
-    player.vy = -JUMP_SPEED;
-    player.y -= 2;
-  }
-
-  function nudgeLocal(direction) {
-    const player = players.get(localPlayerId);
-    if (!player || localKnockedOut || player.dazedUntil > Date.now()) return;
-    const axis = direction === 'left' ? -1 : 1;
-    player.x = clamp(player.x + axis * 3, MIN_X, MAX_X);
-  }
-
-  function updateLocal(entry, dt) {
-    if (!entry || localKnockedOut || entry.knockedOut || entry.dazedUntil > Date.now()) return;
-    const axis = input.left === input.right ? 0 : input.left ? -1 : 1;
-    if (axis) entry.x = clamp(entry.x + axis * RUN_SPEED * dt, MIN_X, MAX_X);
-
-    if (!entry.grounded) {
-      entry.vy += GRAVITY * dt;
-      entry.y += entry.vy * dt;
-      if (entry.y >= GROUND_Y) {
-        entry.y = GROUND_Y;
-        entry.vy = 0;
-        entry.grounded = true;
-      }
-    }
-  }
-
-  function updateRemote(entry, dt, now) {
-    if (entry.knockedOut) return;
-    entry.x += (entry.targetX - entry.x) * Math.min(1, REMOTE_LERP * dt);
-    if (!entry.remoteJumpStart) return;
-    const t = (now - entry.remoteJumpStart) / entry.remoteJumpDuration;
-    if (t >= 1) {
-      entry.remoteJumpStart = 0;
-      entry.y = GROUND_Y;
-    } else {
-      entry.y = GROUND_Y - Math.sin(Math.PI * t) * 72;
-    }
-  }
 
   function drawFortify(entry, now) {
     if (entry.class !== 'tank' || entry.fortifyUntil <= Date.now() || entry.knockedOut) return;
@@ -411,6 +344,8 @@ export function createRaidBattlefield(options = {}) {
 
   function drawOverlay(now) {
     if (!hardcore || !overlay.width || !overlay.height) return;
+    syncVisualPositions();
+
     const scaleX = overlay.width / WIDTH;
     const scaleY = overlay.height / HEIGHT;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -431,11 +366,6 @@ export function createRaidBattlefield(options = {}) {
 
   function frame(now) {
     if (!running) return;
-    const dt = clamp((now - lastFrameAt) / 1000, 0, 0.034);
-    lastFrameAt = now;
-    const local = players.get(localPlayerId);
-    if (local) updateLocal(local, dt);
-    for (const entry of players.values()) if (entry.id !== localPlayerId) updateRemote(entry, dt, now);
     drawOverlay(now);
     requestAnimationFrame(frame);
   }
@@ -473,30 +403,8 @@ export function createRaidBattlefield(options = {}) {
     event.stopImmediatePropagation();
   }
 
-  function trackKeyDown(event) {
-    if (event.repeat || localKnockedOut) return;
-    const key = event.key?.toLowerCase?.() || '';
-    if (key === 'a' || event.key === 'ArrowLeft') {
-      input.left = true;
-      nudgeLocal('left');
-    } else if (key === 'd' || event.key === 'ArrowRight') {
-      input.right = true;
-      nudgeLocal('right');
-    } else if (key === 'w' || event.key === 'ArrowUp' || event.code === 'Space') {
-      jumpLocalOverlay();
-    }
-  }
-
-  function trackKeyUp(event) {
-    const key = event.key?.toLowerCase?.() || '';
-    if (key === 'a' || event.key === 'ArrowLeft') input.left = false;
-    if (key === 'd' || event.key === 'ArrowRight') input.right = false;
-  }
-
   window.addEventListener('keydown', blockKnockedOutKeyboard, true);
   window.addEventListener('keyup', blockKnockedOutKeyboard, true);
-  window.addEventListener('keydown', trackKeyDown);
-  window.addEventListener('keyup', trackKeyUp);
 
   return {
     ...base,
@@ -512,15 +420,12 @@ export function createRaidBattlefield(options = {}) {
       const entry = players.get(id);
       if (entry) entry.facing = facing === 'left' ? 'left' : facing === 'right' ? 'right' : entry.facing;
       if (!entry?.knockedOut) base.movePlayer(id, x, facing, airborneUntil);
-      if (entry && id !== localPlayerId && !entry.knockedOut) {
-        entry.targetX = pctToX(x);
-        applyRemoteAirborne(entry, airborneUntil);
-      }
     },
-    jumpPlayer(id, airborneUntil) {
+    jumpPlayer(id, airborneUntil, jumpStrength, jumpLockedUntil, jumpFatigue) {
       const entry = players.get(id);
-      if (!entry?.knockedOut) base.jumpPlayer(id, airborneUntil);
-      if (entry && id !== localPlayerId && !entry.knockedOut) applyRemoteAirborne(entry, airborneUntil);
+      if (!entry?.knockedOut) {
+        base.jumpPlayer(id, airborneUntil, jumpStrength, jumpLockedUntil, jumpFatigue);
+      }
     },
     playerSpecial(payload) {
       if (payload?.ability === 'fortify') {
@@ -556,10 +461,6 @@ export function createRaidBattlefield(options = {}) {
       if (payload?.hardcore) dispatch('mathraids:hardcoreattack', { payload, localPlayerId });
     },
     setMoveButton(direction, active) {
-      if (direction === 'left' || direction === 'right') {
-        input[direction] = Boolean(active) && !localKnockedOut;
-        if (active && !localKnockedOut) nudgeLocal(direction);
-      }
       if (hardcore && localKnockedOut) {
         base.setMoveButton(direction, false);
         return;
@@ -568,7 +469,6 @@ export function createRaidBattlefield(options = {}) {
     },
     jump() {
       if (hardcore && localKnockedOut) return false;
-      jumpLocalOverlay();
       return base.jump();
     },
     setDazed(id, until) {
@@ -577,13 +477,9 @@ export function createRaidBattlefield(options = {}) {
       base.setDazed(id, until);
     },
     resetInput() {
-      input.left = false;
-      input.right = false;
       base.resetInput();
     },
     complete(outcome) {
-      input.left = false;
-      input.right = false;
       stopHealTargeting();
       base.complete(outcome);
       if (outcome === 'wipe') dispatch('mathraids:raidwipe', {});
@@ -595,8 +491,6 @@ export function createRaidBattlefield(options = {}) {
       overlay.removeEventListener('pointerdown', selectHealTarget);
       window.removeEventListener('keydown', blockKnockedOutKeyboard, true);
       window.removeEventListener('keyup', blockKnockedOutKeyboard, true);
-      window.removeEventListener('keydown', trackKeyDown);
-      window.removeEventListener('keyup', trackKeyUp);
       overlay.remove();
       koBanner.remove();
       base.destroy();
