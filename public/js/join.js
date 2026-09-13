@@ -13,7 +13,8 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const code = normaliseCode(codeInput.value);
   const name = nameInput.value.trim().slice(0, 20);
-  const playerClass = classInput.value === 'healer' ? 'healer' : 'dps';
+  const requestedClass = String(classInput.value || 'dps');
+  const playerClass = ['dps', 'healer', 'tank'].includes(requestedClass) ? requestedClass : 'dps';
 
   if (code.length !== 6 || !name) return;
 
