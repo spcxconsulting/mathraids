@@ -38,15 +38,17 @@
             <option value="3">Level 3 - advanced</option>
             <option value="4">Level 4 - challenge</option>
           </select>
-          <div class="form-hint">Everyone uses the same band in Ranked Raid so the group shares one challenge level.</div>
+          <div class="form-hint">Everyone uses the same band in Ranked and Hardcore raids so the group shares one challenge level.</div>
         </div>
 
         <div class="form-row">
           <label for="mode">Raid mode</label>
           <select id="mode" name="mode">
-            <option value="ranked" selected>Ranked Raid</option>
+            <option value="ranked" selected>Ranked Raid - shared group health</option>
+            <option value="hardcore">Hardcore Raid - individual health and raid wipes</option>
             <option value="individual" disabled>Individual Mode - coming later</option>
           </select>
+          <div class="form-hint">Hardcore players can be knocked out by boss attacks. If every player is down, the raid wipes.</div>
         </div>
 
         <div class="form-row">
