@@ -136,6 +136,7 @@ export default {
           body: JSON.stringify({
             code,
             mode: body.mode || 'ranked',
+            customRules: body.customRules || null,
             boss: bossId,
             bossDefinition,
             topic: body.topic || 'multiplication',
