@@ -1,0 +1,131 @@
+.role-guide {
+  position: absolute;
+  z-index: 7;
+  top: 18px;
+  left: 18px;
+  width: min(430px, calc(100% - 36px));
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 16px;
+  background: rgba(8,18,31,.94);
+  box-shadow: 0 16px 38px rgba(0,0,0,.38);
+  color: #f5f9ff;
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.role-guide.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+.role-guide-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.role-guide-eyebrow {
+  color: #7edfff;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+}
+
+.role-guide-title {
+  margin-top: 3px;
+  font-size: 1.22rem;
+  font-weight: 950;
+  letter-spacing: -.02em;
+}
+
+.role-guide-mode {
+  display: inline-flex;
+  margin-top: 5px;
+  padding: 3px 7px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: #c6d7e8;
+  font-size: .64rem;
+  font-weight: 900;
+  letter-spacing: .09em;
+}
+
+.role-guide-hide {
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  background: rgba(255,255,255,.07);
+  color: #f3f7fb;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.role-guide-hide:hover,
+.role-guide-hide:focus-visible {
+  background: rgba(255,255,255,.12);
+}
+
+.role-guide-summary {
+  margin: 11px 0 12px;
+  color: #d6e3f0;
+  line-height: 1.45;
+  font-size: .9rem;
+}
+
+.role-guide-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.role-guide-step {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(255,255,255,.045);
+}
+
+.role-guide-step strong {
+  color: #ffffff;
+  font-size: .82rem;
+}
+
+.role-guide-step span {
+  color: #b9c9da;
+  line-height: 1.4;
+  font-size: .78rem;
+}
+
+.role-guide-special {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,210,95,.22);
+  border-radius: 11px;
+  background: rgba(255,210,95,.08);
+  color: #ffe6a1;
+  font-size: .78rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px) {
+  .role-guide {
+    top: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
+    padding: 13px;
+  }
+
+  .role-guide-summary {
+    margin-block: 8px 10px;
+  }
+
+  .role-guide-step {
+    padding: 7px 8px;
+  }
+}
