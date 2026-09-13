@@ -26,6 +26,11 @@ function safeClientId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 }
 
+function safePlayerClass(value) {
+  const playerClass = String(value || '').toLowerCase();
+  return ['dps', 'healer', 'tank'].includes(playerClass) ? playerClass : 'dps';
+}
+
 function startingPosition(index) {
   return 6 + ((index * 13) % 88);
 }
@@ -163,7 +168,7 @@ export class RaidRoom extends DurableObject {
         id: crypto.randomUUID(),
         clientId,
         name: safeName(url.searchParams.get('name')),
-        class: url.searchParams.get('class') === 'healer' ? 'healer' : 'dps',
+        class: safePlayerClass(url.searchParams.get('class')),
         x: startingPosition(playerIndex),
         facing: 'right',
         joinedAt: Date.now(),
@@ -187,7 +192,7 @@ export class RaidRoom extends DurableObject {
       await this.saveRoom();
     } else {
       player.name = safeName(url.searchParams.get('name') || player.name);
-      player.class = url.searchParams.get('class') === 'healer' ? 'healer' : 'dps';
+      player.class = safePlayerClass(url.searchParams.get('class') || player.class);
       player.facing ||= 'right';
       player.airborneUntil ||= 0;
       player.jumpReadyAt ||= 0;
@@ -295,7 +300,7 @@ export class RaidRoom extends DurableObject {
     if (this.room.status !== 'lobby') return { error: 'Raid has already started' };
 
     const players = Object.values(this.room.players);
-    if (!players.length) return { error: 'At least one student must join before starting' };
+    if (!players.length) return { error: 'At least one player must join before starting' };
 
     this.room.status = 'running';
     this.room.startedAt = Date.now();
