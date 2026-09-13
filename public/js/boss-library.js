@@ -1,20 +1,44 @@
 const form = document.querySelector('#boss-template-form');
-const idleInput = document.querySelector('#boss-idle');
-const attackInput = document.querySelector('#boss-attack');
-const idlePreview = document.querySelector('#idle-preview');
-const attackPreview = document.querySelector('#attack-preview');
 const message = document.querySelector('#boss-template-message');
 const saveButton = document.querySelector('#save-boss-template');
 const list = document.querySelector('#boss-library-list');
 const refreshButton = document.querySelector('#refresh-bosses');
 const logoutButton = document.querySelector('#admin-logout');
+const attacksHost = document.querySelector('#boss-attacks');
+const attackTemplate = document.querySelector('#boss-attack-template');
+const addAttackButton = document.querySelector('#add-boss-attack');
 
-bindPreview(idleInput, idlePreview);
-bindPreview(attackInput, attackPreview);
+const backgroundInput = document.querySelector('#encounter-background');
+const foregroundInput = document.querySelector('#encounter-foreground');
+const neutralInput = document.querySelector('#boss-idle');
+const deathInput = document.querySelector('#boss-death');
+const backgroundPreview = document.querySelector('#background-preview');
+const foregroundPreview = document.querySelector('#foreground-preview');
+const neutralPreview = document.querySelector('#neutral-preview');
+const scenePreview = document.querySelector('#encounter-scene-preview');
+const bossWidthInput = document.querySelector('#boss-width');
+const bossHeightInput = document.querySelector('#boss-height');
+const bossTopInput = document.querySelector('#boss-top');
+
+const previewUrls = new Map();
+let attackSequence = 0;
+
+bindPreview(backgroundInput, backgroundPreview, 'background');
+bindPreview(foregroundInput, foregroundPreview, 'foreground');
+bindPreview(neutralInput, neutralPreview, 'neutral');
+deathInput.addEventListener('change', () => {});
+
+[bossWidthInput, bossHeightInput, bossTopInput].forEach((input) => {
+  input.addEventListener('input', updateSceneBossPlacement);
+});
+
 refreshButton.addEventListener('click', loadBosses);
-form.addEventListener('submit', saveBoss);
+form.addEventListener('submit', saveEncounter);
 logoutButton?.addEventListener('click', signOut);
+addAttackButton.addEventListener('click', () => addAttack());
 
+addAttack({ name: 'Meteor Blast', type: 'fireball', mechanic: 'left_slam' });
+updateSceneBossPlacement();
 boot();
 
 async function boot() {
@@ -31,26 +55,111 @@ async function boot() {
   }
 }
 
-function bindPreview(input, image) {
-  let objectUrl = null;
+function bindPreview(input, image, key) {
   input.addEventListener('change', () => {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    releasePreviewUrl(key);
     const file = input.files?.[0];
     if (!file) {
       image.removeAttribute('src');
+      updateSceneEmptyState();
       return;
     }
-    objectUrl = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    previewUrls.set(key, objectUrl);
     image.src = objectUrl;
+    updateSceneEmptyState();
+  });
+}
+
+function releasePreviewUrl(key) {
+  const current = previewUrls.get(key);
+  if (current) URL.revokeObjectURL(current);
+  previewUrls.delete(key);
+}
+
+function updateSceneEmptyState() {
+  scenePreview.classList.toggle('has-preview', Boolean(backgroundPreview.src || neutralPreview.src || foregroundPreview.src));
+}
+
+function updateSceneBossPlacement() {
+  const width = clampNumber(bossWidthInput.value, 64, 900, 560);
+  const height = clampNumber(bossHeightInput.value, 64, 900, 490);
+  const top = clampNumber(bossTopInput.value, -500, 360, -92);
+  neutralPreview.style.width = `${(width / 640) * 100}%`;
+  neutralPreview.style.height = `${(height / 360) * 100}%`;
+  neutralPreview.style.top = `${(top / 360) * 100}%`;
+}
+
+function addAttack(initial = {}) {
+  const fragment = attackTemplate.content.cloneNode(true);
+  const card = fragment.querySelector('.boss-attack-card');
+  card.dataset.attackId = `attack-${++attackSequence}`;
+
+  const fields = getAttackFields(card);
+  fields.name.value = initial.name || `Attack ${attacksHost.children.length + 1}`;
+  fields.type.value = initial.type || 'fireball';
+  fields.faces.value = initial.faces || 'left';
+  fields.mechanic.value = initial.mechanic || 'left_slam';
+  fields.baseDamage.value = initial.baseDamage ?? 24;
+  fields.critDamage.value = initial.critDamage ?? 40;
+  fields.warningMs.value = initial.warningMs ?? 1650;
+  fields.travelMs.value = initial.travelMs ?? 720;
+
+  fields.image.addEventListener('change', () => {
+    const key = `${card.dataset.attackId}:preview`;
+    releasePreviewUrl(key);
+    const file = fields.image.files?.[0];
+    const preview = card.querySelector('[data-preview="attack"]');
+    if (!file) {
+      preview.removeAttribute('src');
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    previewUrls.set(key, objectUrl);
+    preview.src = objectUrl;
+  });
+
+  card.querySelector('.boss-attack-remove').addEventListener('click', () => {
+    if (attacksHost.children.length <= 1) {
+      message.innerHTML = '<div class="notice error">An encounter needs at least one boss attack.</div>';
+      return;
+    }
+    releasePreviewUrl(`${card.dataset.attackId}:preview`);
+    card.remove();
+    renumberAttacks();
+  });
+
+  attacksHost.append(fragment);
+  renumberAttacks();
+}
+
+function getAttackFields(card) {
+  return {
+    name: card.querySelector('[data-field="name"]'),
+    type: card.querySelector('[data-field="type"]'),
+    image: card.querySelector('[data-field="image"]'),
+    faces: card.querySelector('[data-field="faces"]'),
+    mechanic: card.querySelector('[data-field="mechanic"]'),
+    baseDamage: card.querySelector('[data-field="baseDamage"]'),
+    critDamage: card.querySelector('[data-field="critDamage"]'),
+    warningMs: card.querySelector('[data-field="warningMs"]'),
+    travelMs: card.querySelector('[data-field="travelMs"]')
+  };
+}
+
+function renumberAttacks() {
+  [...attacksHost.children].forEach((card, index) => {
+    card.querySelector('.boss-attack-number').textContent = `Attack ${index + 1}`;
+    card.querySelector('.boss-attack-remove').hidden = attacksHost.children.length <= 1;
   });
 }
 
 async function loadBosses() {
-  list.innerHTML = '<div class="form-hint">Loading bosses...</div>';
+  list.innerHTML = '<div class="form-hint">Loading encounters...</div>';
   try {
     const response = await fetch('/api/bosses', { cache: 'no-store' });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Could not load boss library');
+    if (!response.ok) throw new Error(data.error || 'Could not load encounter library');
     renderBosses(data.bosses || []);
   } catch (error) {
     list.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
@@ -66,8 +175,8 @@ function renderBosses(bosses) {
     const art = document.createElement('div');
     art.className = 'boss-library-item-art';
     const image = document.createElement('img');
-    image.alt = `${boss.name} idle artwork`;
-    image.src = boss.art?.bossIdle || boss.art?.boss || '/art/numberzilla.svg';
+    image.alt = `${boss.name} neutral artwork`;
+    image.src = boss.art?.bossNeutral || boss.art?.bossIdle || boss.art?.boss || '/art/numberzilla.svg';
     art.append(image);
 
     const copy = document.createElement('div');
@@ -75,11 +184,15 @@ function renderBosses(bosses) {
     const title = document.createElement('strong');
     title.textContent = boss.name;
     const encounter = document.createElement('span');
-    encounter.textContent = boss.encounter || 'Raid boss';
+    encounter.textContent = boss.encounter || 'Raid encounter';
+    const details = document.createElement('span');
+    const attackCount = Number(boss.attackCount) || (boss.custom ? 1 : 3);
+    const enrage = Number(boss.enrageMs) > 0 ? ` • Enrage ${Math.round(boss.enrageMs / 1000)}s` : '';
+    details.textContent = `${attackCount} attack${attackCount === 1 ? '' : 's'}${enrage}`;
     const tag = document.createElement('span');
     tag.className = `boss-library-tag ${boss.custom ? 'custom' : ''}`;
-    tag.textContent = boss.custom ? 'Custom' : 'Built in';
-    copy.append(title, encounter, tag);
+    tag.textContent = boss.custom ? 'Custom encounter' : 'Built in';
+    copy.append(title, encounter, details, tag);
 
     card.append(art, copy);
 
@@ -96,41 +209,99 @@ function renderBosses(bosses) {
   }
 }
 
-async function saveBoss(event) {
-  event.preventDefault();
-  saveButton.disabled = true;
-  saveButton.textContent = 'Uploading boss...';
-  message.innerHTML = '';
+function collectAttacks() {
+  return [...attacksHost.children].map((card, index) => {
+    const fields = getAttackFields(card);
+    return {
+      id: `attack-${index + 1}`,
+      name: fields.name.value.trim(),
+      type: fields.type.value,
+      faces: fields.faces.value,
+      mechanic: fields.mechanic.value,
+      baseDamage: Number(fields.baseDamage.value),
+      critDamage: Number(fields.critDamage.value),
+      warningMs: Number(fields.warningMs.value),
+      travelMs: Number(fields.travelMs.value),
+      file: fields.image.files?.[0] || null
+    };
+  });
+}
 
-  const formData = new FormData(form);
+async function saveEncounter(event) {
+  event.preventDefault();
+  message.innerHTML = '';
+  if (!form.reportValidity()) return;
+
+  const attacks = collectAttacks();
+  if (!attacks.length || attacks.some((attack) => !attack.file)) {
+    message.innerHTML = '<div class="notice error">Every boss attack needs an attack image.</div>';
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = 'Uploading encounter...';
+
+  const payload = new FormData();
+  payload.append('name', document.querySelector('#boss-name').value.trim());
+  payload.append('encounter', document.querySelector('#boss-encounter').value.trim());
+  payload.append('canvasWidth', document.querySelector('#canvas-width').value);
+  payload.append('canvasHeight', document.querySelector('#canvas-height').value);
+  payload.append('bossWidth', bossWidthInput.value);
+  payload.append('bossHeight', bossHeightInput.value);
+  payload.append('bossTop', bossTopInput.value);
+  payload.append('enrageSeconds', document.querySelector('#enrage-seconds').value);
+  payload.append('enrageDamageMultiplier', document.querySelector('#enrage-multiplier').value);
+  payload.append('background', backgroundInput.files[0]);
+  if (foregroundInput.files?.[0]) payload.append('foreground', foregroundInput.files[0]);
+  payload.append('idle', neutralInput.files[0]);
+  payload.append('death', deathInput.files[0]);
+
+  payload.append('attackDefinitions', JSON.stringify(attacks.map(({ file, ...attack }) => attack)));
+  attacks.forEach((attack, index) => payload.append(`attackImage_${index}`, attack.file));
 
   try {
     const response = await fetch('/api/bosses', {
       method: 'POST',
-      body: formData
+      body: payload
     });
     const data = await response.json();
     if (response.status === 403) {
       window.location.replace('/admin/');
       return;
     }
-    if (!response.ok) throw new Error(data.error || 'Could not save boss template');
+    if (!response.ok) throw new Error(data.error || 'Could not save encounter');
 
-    message.innerHTML = `<div class="notice success">${escapeHtml(data.boss.name)} is now available when creating a raid.</div>`;
-    form.reset();
-    idlePreview.removeAttribute('src');
-    attackPreview.removeAttribute('src');
+    message.innerHTML = `<div class="notice success">${escapeHtml(data.boss.encounter || data.boss.name)} is now available when creating a raid.</div>`;
+    resetBuilder();
     await loadBosses();
   } catch (error) {
     message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = 'Save boss template';
+    saveButton.textContent = 'Save encounter';
   }
 }
 
+function resetBuilder() {
+  form.reset();
+  document.querySelector('#canvas-width').value = 640;
+  document.querySelector('#canvas-height').value = 360;
+  bossWidthInput.value = 560;
+  bossHeightInput.value = 490;
+  bossTopInput.value = -92;
+  document.querySelector('#enrage-seconds').value = 120;
+  document.querySelector('#enrage-multiplier').value = 1.5;
+
+  for (const key of [...previewUrls.keys()]) releasePreviewUrl(key);
+  [backgroundPreview, foregroundPreview, neutralPreview].forEach((image) => image.removeAttribute('src'));
+  attacksHost.replaceChildren();
+  addAttack({ name: 'Meteor Blast', type: 'fireball', mechanic: 'left_slam' });
+  updateSceneBossPlacement();
+  updateSceneEmptyState();
+}
+
 async function deleteBoss(boss, button) {
-  if (!window.confirm(`Delete ${boss.name} from the Boss Library? Existing raids will keep their saved copy.`)) return;
+  if (!window.confirm(`Delete ${boss.encounter || boss.name} from the platform encounter library? Existing raids keep their saved copy.`)) return;
   button.disabled = true;
   try {
     const response = await fetch(`/api/bosses/${encodeURIComponent(boss.id)}`, { method: 'DELETE' });
@@ -139,7 +310,7 @@ async function deleteBoss(boss, button) {
       window.location.replace('/admin/');
       return;
     }
-    if (!response.ok) throw new Error(data.error || 'Could not delete boss');
+    if (!response.ok) throw new Error(data.error || 'Could not delete encounter');
     await loadBosses();
   } catch (error) {
     message.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
@@ -154,6 +325,12 @@ async function signOut() {
   } finally {
     window.location.replace('/admin/');
   }
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }
 
 function escapeHtml(value) {
