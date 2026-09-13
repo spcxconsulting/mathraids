@@ -9,7 +9,6 @@ const ATTACK_TRAVEL_MS = 720;
 const PASSIVE_GUARD_RADIUS = 9;
 const PASSIVE_GUARD_MULTIPLIER = 0.30;
 const FORTIFY_RADIUS = 12;
-const FORTIFY_MULTIPLIER = 0.10;
 const FORTIFY_DURATION_MS = 5000;
 const FORTIFY_SELF_HEAL = 35;
 const SPECIAL_STREAK = 5;
@@ -33,6 +32,10 @@ function decodeMessage(message) {
 
 function isTank(player) {
   return player?.class === 'tank';
+}
+
+function isBlastAttack(attack) {
+  return attack?.type === 'shockwave';
 }
 
 function clamp(value, min, max) {
@@ -314,12 +317,17 @@ export class RaidRoom extends HardcoreRaidRoom {
     return players.filter((player) => isTank(player) && (player.fortifyUntil || 0) >= impactAt && !player.knockedOut);
   }
 
-  protectionFor(player, hitById, players, impactAt) {
+  fortifyTankFor(player, players, impactAt, attack) {
+    if (!isBlastAttack(attack)) return null;
+    return this.activeFortifyTanks(players, impactAt)
+      .find((tank) => Math.abs(tank.x - player.x) <= FORTIFY_RADIUS) || null;
+  }
+
+  protectionFor(player, hitById, players, impactAt, attack) {
     if (!hitById.get(player.id) || isTank(player)) return null;
 
-    const fortifiedTank = this.activeFortifyTanks(players, impactAt)
-      .find((tank) => Math.abs(tank.x - player.x) <= FORTIFY_RADIUS);
-    if (fortifiedTank) return { tank: fortifiedTank, type: 'fortify', multiplier: FORTIFY_MULTIPLIER };
+    const fortifiedTank = this.fortifyTankFor(player, players, impactAt, attack);
+    if (fortifiedTank) return { tank: fortifiedTank, type: 'fortify', multiplier: 0 };
 
     if (!this.tankGuardEnabled()) return null;
     const passiveTank = players.find((tank) =>
@@ -339,6 +347,7 @@ export class RaidRoom extends HardcoreRaidRoom {
     const hitPlayerIds = [];
     const dodgedPlayerIds = [];
     const protectedPlayerIds = [];
+    const fortifyAbsorbedPlayerIds = [];
     const airborneMitigatedPlayerIds = [];
     const guardTankIds = new Set();
     const fortifyTankIds = new Set();
@@ -356,18 +365,28 @@ export class RaidRoom extends HardcoreRaidRoom {
 
     const protectionByPlayer = new Map();
     for (const player of living) {
-      const protection = this.protectionFor(player, hitById, living, attack.impactAt);
+      const protection = this.protectionFor(player, hitById, living, attack.impactAt, attack);
       if (!protection) continue;
       protectionByPlayer.set(player.id, protection);
       protectedPlayerIds.push(player.id);
-      guardTankIds.add(protection.tank.id);
-      if (protection.type === 'fortify') fortifyTankIds.add(protection.tank.id);
+      if (protection.type === 'fortify') {
+        fortifyTankIds.add(protection.tank.id);
+        fortifyAbsorbedPlayerIds.push(player.id);
+      } else {
+        guardTankIds.add(protection.tank.id);
+      }
     }
 
     const preventedByTank = new Map();
     for (const player of living) {
       if (!hitById.get(player.id) || isTank(player)) continue;
       const protection = protectionByPlayer.get(player.id);
+
+      if (protection?.type === 'fortify') {
+        damageByPlayer[player.id] = 0;
+        continue;
+      }
+
       const airborne = this.playerAirborneAtImpact(player, attack);
       let multiplier = protection ? protection.multiplier : 1;
       if (airborne) {
@@ -378,7 +397,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       damageByPlayer[player.id] = damage;
       player.health = Math.max(minimumHealth, player.health - damage);
 
-      if (protection) {
+      if (protection?.type === 'guard') {
         const prevented = Math.max(0, baseDamage - damage);
         preventedByTank.set(
           protection.tank.id,
@@ -389,12 +408,21 @@ export class RaidRoom extends HardcoreRaidRoom {
 
     for (const tank of living.filter(isTank)) {
       const directlyHit = hitById.get(tank.id);
-      const fortified = this.fortifyEnabled() && (tank.fortifyUntil || 0) >= attack.impactAt;
-      const airborne = directlyHit && this.playerAirborneAtImpact(tank, attack);
+      const fortifiedBlast = directlyHit && Boolean(this.fortifyTankFor(tank, living, attack.impactAt, attack));
       const prevented = preventedByTank.get(tank.id) || 0;
+
+      if (fortifiedBlast) {
+        damageByPlayer[tank.id] = 0;
+        if (!fortifyAbsorbedPlayerIds.includes(tank.id)) fortifyAbsorbedPlayerIds.push(tank.id);
+        if (!protectedPlayerIds.includes(tank.id)) protectedPlayerIds.push(tank.id);
+        fortifyTankIds.add(tank.id);
+        continue;
+      }
+
       if (!directlyHit && prevented <= 0) continue;
 
-      let directMultiplier = fortified ? 0.5 : 1;
+      const airborne = directlyHit && this.playerAirborneAtImpact(tank, attack);
+      let directMultiplier = 1;
       if (airborne) {
         directMultiplier *= AIRBORNE_DAMAGE_MULTIPLIER;
         airborneMitigatedPlayerIds.push(tank.id);
@@ -402,16 +430,13 @@ export class RaidRoom extends HardcoreRaidRoom {
       const baseTankDamage = directlyHit
         ? Math.max(1, Math.round(baseDamage * directMultiplier))
         : 0;
-      const absorbShare = fortified ? 0.20 : 0.35;
-      const absorbCap = Math.round(baseDamage * (fortified ? 0.50 : 0.75));
-      const absorbed = Math.min(absorbCap, Math.round(prevented * absorbShare));
+      const absorbed = Math.min(Math.round(baseDamage * 0.75), Math.round(prevented * 0.35));
       const tankDamage = baseTankDamage + absorbed;
 
       if (tankDamage > 0) {
         damageByPlayer[tank.id] = tankDamage;
         tank.health = Math.max(minimumHealth, tank.health - tankDamage);
       }
-      if (fortified && prevented > 0) fortifyTankIds.add(tank.id);
     }
 
     if (this.knockoutsEnabled()) {
@@ -440,6 +465,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       hitPlayerIds,
       dodgedPlayerIds,
       protectedPlayerIds,
+      fortifyAbsorbedPlayerIds,
       airborneMitigatedPlayerIds,
       guardTankIds: [...guardTankIds],
       fortifyTankIds: [...fortifyTankIds],
@@ -456,6 +482,7 @@ export class RaidRoom extends HardcoreRaidRoom {
     const hitPlayerIds = [];
     const dodgedPlayerIds = [];
     const protectedPlayerIds = [];
+    const fortifyAbsorbedPlayerIds = [];
     const airborneMitigatedPlayerIds = [];
     const guardTankIds = new Set();
     const fortifyTankIds = new Set();
@@ -470,28 +497,42 @@ export class RaidRoom extends HardcoreRaidRoom {
     let effectiveHits = 0;
     for (const player of players) {
       if (!hitById.get(player.id)) continue;
+
+      if (isTank(player)) {
+        const fortifiedBlast = Boolean(this.fortifyTankFor(player, players, attack.impactAt, attack));
+        if (fortifiedBlast) {
+          protectedPlayerIds.push(player.id);
+          fortifyAbsorbedPlayerIds.push(player.id);
+          fortifyTankIds.add(player.id);
+          continue;
+        }
+      }
+
       const airborneMultiplier = this.playerAirborneAtImpact(player, attack)
         ? AIRBORNE_DAMAGE_MULTIPLIER
         : 1;
       if (airborneMultiplier < 1) airborneMitigatedPlayerIds.push(player.id);
 
       if (isTank(player)) {
-        const fortified = this.fortifyEnabled() && (player.fortifyUntil || 0) >= attack.impactAt;
-        effectiveHits += (fortified ? 0.5 : 1) * airborneMultiplier;
-        if (fortified) fortifyTankIds.add(player.id);
+        effectiveHits += airborneMultiplier;
         continue;
       }
 
-      const protection = this.protectionFor(player, hitById, players, attack.impactAt);
+      const protection = this.protectionFor(player, hitById, players, attack.impactAt, attack);
       if (!protection) {
         effectiveHits += airborneMultiplier;
         continue;
       }
 
-      effectiveHits += protection.multiplier * airborneMultiplier;
       protectedPlayerIds.push(player.id);
+      if (protection.type === 'fortify') {
+        fortifyAbsorbedPlayerIds.push(player.id);
+        fortifyTankIds.add(protection.tank.id);
+        continue;
+      }
+
+      effectiveHits += protection.multiplier * airborneMultiplier;
       guardTankIds.add(protection.tank.id);
-      if (protection.type === 'fortify') fortifyTankIds.add(protection.tank.id);
     }
 
     const damage = attackDamageForPower(
@@ -514,6 +555,7 @@ export class RaidRoom extends HardcoreRaidRoom {
       hitPlayerIds,
       dodgedPlayerIds,
       protectedPlayerIds,
+      fortifyAbsorbedPlayerIds,
       airborneMitigatedPlayerIds,
       guardTankIds: [...guardTankIds],
       fortifyTankIds: [...fortifyTankIds],
