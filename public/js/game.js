@@ -266,7 +266,21 @@ function handleMessage(payload) {
   }
 
   if (payload.type === 'player_jump') {
-    battlefield.jumpPlayer(payload.playerId, payload.airborneUntil);
+    battlefield.jumpPlayer(
+      payload.playerId,
+      payload.airborneUntil,
+      payload.jumpStrength,
+      payload.jumpLockedUntil,
+      payload.jumpFatigue
+    );
+    return;
+  }
+
+  if (payload.type === 'jump_exhausted') {
+    battlefield.setJumpLock?.(payload.until);
+    feedback.className = 'feedback';
+    feedback.textContent = 'Jump exhausted. Recovering for 5 seconds.';
+    battlefieldStatus.textContent = feedback.textContent;
     return;
   }
 
@@ -292,11 +306,20 @@ function handleMessage(payload) {
     const dodged = (payload.dodgedPlayerIds || []).includes(playerId);
     const guarded = (payload.protectedPlayerIds || []).includes(playerId);
     const guarding = (payload.guardTankIds || []).includes(playerId);
+    const airborneReduced = (payload.airborneMitigatedPlayerIds || []).includes(playerId);
     const actualDamage = Number(payload.damageByPlayer?.[playerId] ?? payload.damage ?? 0);
 
-    if (guarded) {
+    if (guarded && airborneReduced) {
+      feedback.className = 'feedback good';
+      feedback.textContent = `Airborne + Tank protection reduced the hit to ${actualDamage} damage.`;
+    } else if (guarded) {
       feedback.className = 'feedback good';
       feedback.textContent = `Tank protection reduced the hit to ${actualDamage} damage.`;
+    } else if (airborneReduced && hit) {
+      feedback.className = 'feedback good';
+      feedback.textContent = payload.hardcore
+        ? `Airborne! The hit was reduced to ${actualDamage} damage.`
+        : 'Airborne! Your jump reduced the raid damage from that hit.';
     } else if (guarding) {
       const protectedCount = (payload.protectedPlayerIds || []).length;
       feedback.className = 'feedback good';
@@ -580,9 +603,9 @@ function send(payload) {
 }
 
 function telegraphText(type) {
-  if (type === 'left_slam') return 'Boss attack warning: left side danger. Move right or stack on a Tank if you cannot escape.';
-  if (type === 'right_slam') return 'Boss attack warning: right side danger. Move left or stack on a Tank if you cannot escape.';
-  return 'Boss attack warning: shockwave incoming. Jump, or stack tightly on a Tank to reduce the hit.';
+  if (type === 'left_slam') return 'Boss attack warning: left side danger. Move right or jump to soften the hit.';
+  if (type === 'right_slam') return 'Boss attack warning: right side danger. Move left or jump to soften the hit.';
+  return 'Boss attack warning: shockwave incoming. Jump to avoid it completely.';
 }
 
 function titleCase(value) {
