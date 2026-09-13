@@ -14,6 +14,20 @@ import { publicQuestion } from './questions.js';
 const TANK_GUARD_RADIUS = 9;
 const TANK_GUARD_DAMAGE_MULTIPLIER = 0.3;
 
+export function normaliseCustomRules(value = {}) {
+  const healthMode = value.healthMode === 'individual' ? 'individual' : 'shared';
+  return {
+    healthMode,
+    knockouts: healthMode === 'individual' && value.knockouts !== false,
+    tankGuard: value.tankGuard !== false,
+    fortify: value.fortify !== false,
+    jumpFatigue: value.jumpFatigue !== false,
+    airborneMitigation: value.airborneMitigation !== false,
+    progressionEligible: false,
+    rewardsEligible: false
+  };
+}
+
 function decodeMessage(message) {
   try {
     return JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message));
@@ -43,11 +57,22 @@ export class RaidRoom extends HostRaidRoom {
   }
 
   async createRoom(request) {
+    const body = await request.clone().json().catch(() => ({}));
     const response = await super.createRoom(request);
     if (!response.ok || !this.room) return response;
 
+    if (body.mode === 'custom') {
+      this.room.config.mode = 'custom';
+      this.room.config.customRules = normaliseCustomRules(body.customRules || {});
+      this.room.config.progressionEligible = false;
+      this.room.config.rewardsEligible = false;
+    } else {
+      this.room.config.progressionEligible = true;
+      this.room.config.rewardsEligible = true;
+    }
+
     const definition = this.bossDefinition();
-    this.room.version = Math.max(Number(this.room.version) || 0, 5);
+    this.room.version = Math.max(Number(this.room.version) || 0, 11);
     this.room.boss.name = definition.name;
     this.room.boss.tuning = normaliseBossTuning({}, definition);
     this.room.boss.nextAttackAt = null;
@@ -62,6 +87,11 @@ export class RaidRoom extends HostRaidRoom {
     if (event?.type === 'update_boss_tuning' && attachment?.role === 'teacher') {
       if (!this.room || this.room.status !== 'lobby') {
         this.safeSend(ws, { type: 'error', message: 'Boss tuning can only be changed before the raid starts.' });
+        return;
+      }
+
+      if (this.room.config?.mode !== 'custom') {
+        this.safeSend(ws, { type: 'error', message: 'Boss tuning is only available for Custom raids.' });
         return;
       }
 
@@ -315,6 +345,9 @@ export class RaidRoom extends HostRaidRoom {
       presentation: definition.presentation,
       victory: definition.victory
     };
+    state.custom = this.room?.config?.mode === 'custom';
+    state.progressionEligible = this.room?.config?.progressionEligible !== false;
+    state.rewardsEligible = this.room?.config?.rewardsEligible !== false;
     delete state.boss.nextAttackAt;
     return state;
   }
