@@ -37,6 +37,18 @@ function safeNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, number));
 }
 
+function defaultAttackSize(type) {
+  if (type === 'beam') return 48;
+  if (type === 'smash') return 90;
+  return 34;
+}
+
+function attackGeometry(type, rawSize) {
+  const size = Math.round(safeNumber(rawSize, 4, 640, defaultAttackSize(type)));
+  if (type === 'beam') return { beamWidth: size };
+  return { radius: size };
+}
+
 function publicSummary(definition) {
   return {
     id: definition.id,
@@ -88,6 +100,11 @@ function parseAttackDefinitions(value) {
       type,
       faces,
       mechanic,
+      origin: {
+        x: safeNumber(attack?.originX ?? attack?.origin?.x, 0, 100, 50),
+        y: safeNumber(attack?.originY ?? attack?.origin?.y, 0, 100, 24)
+      },
+      geometry: attackGeometry(type, attack?.size),
       baseDamage,
       critDamage,
       warningMs: Math.round(safeNumber(attack?.warningMs, 500, 10000, 1650)),
@@ -188,6 +205,8 @@ export async function createBossTemplate(request, env) {
       type: attack.type,
       faces: attack.faces,
       mechanic: attack.mechanic,
+      origin: attack.origin,
+      geometry: attack.geometry,
       baseDamage: attack.baseDamage,
       critDamage: attack.critDamage,
       warningMs: attack.warningMs,
@@ -206,7 +225,7 @@ export async function createBossTemplate(request, env) {
   const enrageDamageMultiplier = safeNumber(form.get('enrageDamageMultiplier'), 1, 5, 1.5);
 
   const definition = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id,
     name,
     encounter,
