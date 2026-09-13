@@ -87,7 +87,7 @@ export default {
         const boss = await createBossTemplate(request, env);
         return json({ boss }, 201);
       } catch (error) {
-        return json({ error: error.message || 'Could not create boss template.' }, 400);
+        return json({ error: error.message || 'Could not create boss encounter.' }, 400);
       }
     }
 
@@ -95,10 +95,10 @@ export default {
     if (deleteBossMatch && request.method === 'DELETE') {
       if (!(await adminAuthorised(request, env))) return json({ error: 'Super admin sign-in is required.' }, 403);
       const deleted = await deleteBossTemplate(env, deleteBossMatch[1]);
-      return deleted ? json({ ok: true }) : json({ error: 'Boss template not found.' }, 404);
+      return deleted ? json({ ok: true }) : json({ error: 'Boss encounter not found.' }, 404);
     }
 
-    const bossAssetMatch = url.pathname.match(/^\/api\/boss-assets\/(custom-[a-z0-9-]+\/(?:idle|attack)\.(?:png|jpg|webp))$/);
+    const bossAssetMatch = url.pathname.match(/^\/api\/boss-assets\/(custom-[a-z0-9-]+\/(?:idle|attack|background|foreground|neutral|death|attack-\d+)\.(?:png|jpg|webp))$/);
     if (bossAssetMatch && request.method === 'GET') {
       return serveBossAsset(env, bossAssetMatch[1]);
     }
